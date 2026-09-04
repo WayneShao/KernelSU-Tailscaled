@@ -56,6 +56,7 @@
 ## Implementation Constraints
 
 - Keep ZeroTier enabled on both test phones and on the wider network throughout this plan.
+- Treat ZeroTier as read-only during module development and validation: do not create/edit its files, change routes or firewall rules, or restart/stop its service.
 - Bind every ADB command to one current serial from `adb devices -l`; never use an unqualified `adb shell`.
 - Test/install on `PKX110` first, then `nezha`; restore the prior Tailscale module runtime before moving to the second device if a gate fails.
 - Never depend on `/system/bin/tailscale`; use `/data/adb/tailscale/bin/*` or `$MODDIR/*` absolute paths internally.
@@ -118,7 +119,7 @@ The script must require `-Serial`, validate that exact serial is currently `devi
 
 - [ ] **Step 2: Add non-destructive baseline capture**
 
-Capture module version, exact relevant process cmdlines, canonical/legacy state-file existence and SHA-256, `tailscale0`, policy routes, active ZeroTier identity/network state without secrets, current ADB transport, and the effective module directory. Abort if ZeroTier is not online or ADB is not reachable.
+Capture module version, exact relevant process cmdlines, canonical/legacy state-file existence and SHA-256, `tailscale0`, policy routes, read-only active ZeroTier status without secrets, current ADB transport, and the effective module directory. Abort if ZeroTier is not online or ADB is not reachable. Do not create or edit ZeroTier files and do not restart its service.
 
 - [ ] **Step 3: Add controlled Tailscale 1.102.3 native-TUN gate**
 
@@ -141,7 +142,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\device-gate.ps1 -Serial 172.3
 powershell -ExecutionPolicy Bypass -File .\scripts\device-gate.ps1 -Serial 172.30.11.230:5555 -Run
 ```
 
-Expected: each device ends with ZeroTier online, prior Tailscale runtime restored, no `tailscale-gate0`, no port 41643 listener, and a redacted evidence summary showing native TUN/local API/web success. If native TUN fails on one device, set that device's later deployment `mode=userspace` explicitly; do not add automatic fallback.
+Expected: each device ends with the untouched ZeroTier process still online, prior Tailscale runtime restored, no `tailscale-gate0`, no port 41643 listener, and a redacted evidence summary showing native TUN/local API/web success. If coexistence regresses, stop the temporary Tailscale runtime and change only the Tailscale-side design. If native TUN fails on one device, set that device's later deployment `mode=userspace` explicitly; do not add automatic fallback.
 
 - [ ] **Step 7: Commit the reusable gate harness and redaction docs, not evidence**
 
@@ -422,7 +423,7 @@ git commit -m "ci: verify Tailscale binaries and module packages"
 
 - [ ] **Step 1: Capture the hard pre-install gate**
 
-Re-enumerate ADB, bind to `172.30.83.21:5555`, and prove ZeroTier online, current module/process identity, state path/hash, Android routes, and recovery command. Add the ZeroTier `interfacePrefixBlacklist` for `tailscale`/`Tailscale` using the phone module's actual config schema only after inspecting it, restart only ZeroTier if required, and prove the same ZeroTier identity/address and ADB reachability returned.
+Re-enumerate ADB, bind to `172.30.83.21:5555`, and prove ZeroTier online, current module/process identity, state path/hash, Android routes, and recovery command. ZeroTier is read-only: save only redacted status/process/counter observations and do not create configuration, alter routing/firewall state, or restart its service.
 
 - [ ] **Step 2: Install the arm64 ZIP as an in-place update**
 
@@ -460,7 +461,7 @@ Update device-test documentation with pass/fail and compatibility notes. Do not 
 
 - [ ] **Step 1: Repeat the hard gate with the current `nezha` serial**
 
-Re-enumerate ADB and bind every operation to `172.30.11.230:5555`. Prove ZeroTier remains online and inspect/add its Tailscale interface blacklist using the actual module config. Capture state/process/routes without secrets.
+Re-enumerate ADB and bind every operation to `172.30.11.230:5555`. Prove ZeroTier remains online using read-only status and process observations. Do not inspect secret-bearing content, create configuration, alter routes/firewall state, or restart its service.
 
 - [ ] **Step 2: Install the same verified arm64 artifact**
 
@@ -472,7 +473,7 @@ Require native TUN unless the feasibility gate explicitly selected userspace for
 
 - [ ] **Step 4: Compare both-device evidence**
 
-Confirm both phones are distinct online Tailscale nodes, both retain ZeroTier access, neither accepts Tailscale routes/DNS, neither advertises routes, localhost web is not exposed on LAN/Tailscale, and no recursive ZeroTier-over-Tailscale path appears.
+Confirm both phones are distinct online Tailscale nodes, both retain ZeroTier access, neither accepts Tailscale routes/DNS, neither advertises routes, localhost web is not exposed on LAN/Tailscale, and no recursive ZeroTier-over-Tailscale path appears. Detection of recursive traffic fails the Tailscale test and triggers Tailscale rollback; it never triggers a ZeroTier change.
 
 - [ ] **Step 5: Commit only documentation conclusions**
 

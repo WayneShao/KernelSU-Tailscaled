@@ -82,6 +82,8 @@ not an iframe or a second implementation of the Tailscale panel.
 - Automatic fallback from native TUN after transient network failures.
 - Full runtime validation on Magisk or APatch.
 - Changing or stopping ZeroTier as part of module installation.
+- Creating or editing ZeroTier configuration, routes, firewall rules, service
+  state, or module files during Tailscale module development and validation.
 - Advertising subnet routes automatically.
 
 ## 4. User Interface
@@ -338,10 +340,16 @@ For each of `PKX110` and `nezha`:
 12. reboot again and repeat process, socket, route, WebUI, and connectivity
     checks.
 
+ZeroTier is a read-only coexistence boundary during these checks. Its status,
+interfaces, paths, and counters may be observed to detect regression, but the
+Tailscale test procedure never changes or restarts it. If coexistence produces
+recursive traffic or another regression, stop and restore the Tailscale test
+runtime, record the evidence, and revise the Tailscale side only.
+
 ZeroTier remains enabled until both phones are online in Tailscale and the
-larger migration inventory and reachability gate is satisfied. Before parallel
-traffic tests, ZeroTier on each phone must ignore `tailscale*` interfaces to
-avoid recursive overlay transport.
+larger migration inventory and reachability gate is satisfied. Parallel tests
+observe both overlays for recursive traffic; a detected regression stops and
+rolls back Tailscale without changing ZeroTier.
 
 ### Compatibility statement
 
