@@ -1,0 +1,34 @@
+#!/system/bin/sh
+SCRIPT_DIR=${0%/*}
+. "$SCRIPT_DIR/common.sh"
+load_config || exit 1
+
+web_health() {
+  pid=$(read_pid "$WEB_PID") || return 1
+  pid_matches "$pid" "$TAILSCALE_BIN" "--socket=$SOCKET_FILE" && tcp_ready "$WEB_LISTEN"
+}
+
+web_start() {
+  web_health && return 0
+  socket_ready || return 1
+  mkdir -p "$RUN_DIR" "$LOG_DIR"
+  nohup "$TAILSCALE_BIN" --socket="$SOCKET_FILE" web --listen="$WEB_LISTEN" >> "$LOG_DIR/web.log" 2>&1 &
+  pid=$!
+  write_pid "$WEB_PID" "$pid"
+  count=0
+  while [ "$count" -lt 15 ]; do
+    web_health && return 0
+    pid_matches "$pid" "$TAILSCALE_BIN" "--socket=$SOCKET_FILE" || break
+    sleep 1
+    count=$((count + 1))
+  done
+  stop_owned "$WEB_PID" "$TAILSCALE_BIN" "--socket=$SOCKET_FILE"
+  return 1
+}
+
+case "$1" in
+  start) web_start ;;
+  stop) stop_owned "$WEB_PID" "$TAILSCALE_BIN" "--socket=$SOCKET_FILE" ;;
+  health) web_health ;;
+  *) echo "usage: tailscale-web {start|stop|health}" >&2; exit 2 ;;
+esac

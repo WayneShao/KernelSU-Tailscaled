@@ -1,0 +1,124 @@
+#!/system/bin/sh
+SCRIPT_DIR=${0%/*}
+. "$SCRIPT_DIR/common.sh"
+load_config || exit 1
+
+supervisor_health() {
+  pid=$(read_pid "$SUPERVISOR_PID") || return 1
+  pid_matches "$pid" /system/bin/sh "$SUPERVISOR_SCRIPT"
+}
+
+runtime_stop() {
+  stop_owned "$SUPERVISOR_PID" /system/bin/sh "$SUPERVISOR_SCRIPT"
+  "$WEB_SCRIPT" stop >/dev/null 2>&1 || true
+  "$TUNNEL_SCRIPT" stop >/dev/null 2>&1 || true
+  "$DAEMON_SCRIPT" stop >/dev/null 2>&1 || true
+  echo "Tailscale runtime stopped"
+}
+
+runtime_start() {
+  module_disabled && {
+    echo "Tailscale module is disabled"
+    return 1
+  }
+  supervisor_health && {
+    echo "Tailscale runtime is already running"
+    return 0
+  }
+  mkdir -p "$RUN_DIR" "$LOG_DIR"
+  nohup "$SUPERVISOR_SCRIPT" >> "$LOG_DIR/supervisor.log" 2>&1 &
+  pid=$!
+  write_pid "$SUPERVISOR_PID" "$pid"
+  count=0
+  while [ "$count" -lt 35 ]; do
+    if "$DAEMON_SCRIPT" health >/dev/null 2>&1; then
+      echo "Tailscale runtime started"
+      return 0
+    fi
+    supervisor_health || break
+    sleep 1
+    count=$((count + 1))
+  done
+  runtime_stop >/dev/null 2>&1
+  echo "Tailscale runtime failed to start" >&2
+  return 1
+}
+
+runtime_enable() {
+  rm -f "$MODDIR/disable"
+  if runtime_start; then
+    echo "Tailscale module enabled"
+    return 0
+  fi
+  : > "$MODDIR/disable"
+  runtime_stop >/dev/null 2>&1
+  echo "Tailscale module enable failed" >&2
+  return 1
+}
+
+runtime_disable() {
+  : > "$MODDIR/disable"
+  runtime_stop
+  echo "Tailscale module disabled"
+}
+
+status_json() {
+  if module_disabled; then enabled=false; else enabled=true; fi
+  if supervisor_health; then supervisor=running; else supervisor=stopped; fi
+  if "$DAEMON_SCRIPT" health >/dev/null 2>&1; then daemon=running; else daemon=stopped; fi
+  if "$WEB_SCRIPT" health >/dev/null 2>&1; then web=running; else web=stopped; fi
+  if "$TUNNEL_SCRIPT" health >/dev/null 2>&1; then data_plane=running; else data_plane=stopped; fi
+  module_version=$(sed -n 's/^version=//p' "$MODDIR/module.prop" | head -n 1)
+  tailscale_version=$("$TAILSCALE_BIN" version 2>/dev/null | head -n 1)
+  tailscale_status=$("$TAILSCALE_BIN" --socket="$SOCKET_FILE" status --json 2>/dev/null || true)
+  tailscale_prefs=$("$TAILSCALE_BIN" --socket="$SOCKET_FILE" debug prefs 2>/dev/null || true)
+
+  printf '{'
+  printf '"enabled":%s,' "$enabled"
+  printf '"mode":"%s",' "$(json_escape "$MODE")"
+  printf '"moduleVersion":"%s",' "$(json_escape "$module_version")"
+  printf '"tailscaleVersion":"%s",' "$(json_escape "$tailscale_version")"
+  printf '"components":{"supervisor":"%s","daemon":"%s","dataPlane":"%s","web":"%s"},' "$supervisor" "$daemon" "$data_plane" "$web"
+  printf '"tailscale":'
+  json_object_or_null "$tailscale_status"
+  printf ',"prefs":'
+  json_object_or_null "$tailscale_prefs"
+  printf '}\n'
+}
+
+case "$1" in
+  enable) runtime_enable ;;
+  disable) runtime_disable ;;
+  toggle)
+    if module_disabled; then runtime_enable; else runtime_disable; fi
+    ;;
+  start) runtime_start ;;
+  stop) runtime_stop ;;
+  restart)
+    runtime_stop >/dev/null
+    module_disabled && { echo "Tailscale module is disabled"; exit 1; }
+    runtime_start
+    ;;
+  status)
+    if module_disabled; then state=disabled; elif supervisor_health; then state=running; else state=stopped; fi
+    echo "Tailscale module: $state"
+    "$DAEMON_SCRIPT" health >/dev/null 2>&1 && echo "tailscaled: running" || echo "tailscaled: stopped"
+    "$WEB_SCRIPT" health >/dev/null 2>&1 && echo "local web: running" || echo "local web: stopped"
+    ;;
+  status-json) status_json ;;
+  logs)
+    for file in "$LOG_DIR/supervisor.log" "$LOG_DIR/tailscaled.log" "$LOG_DIR/web.log" "$LOG_DIR/tunnel.log"; do
+      [ -f "$file" ] || continue
+      echo "===== ${file##*/} ====="
+      tail -n 300 "$file"
+    done
+    ;;
+  web-restart)
+    "$WEB_SCRIPT" stop
+    "$WEB_SCRIPT" start
+    ;;
+  *)
+    echo "usage: tailscale-service {enable|disable|toggle|start|stop|restart|status|status-json|logs|web-restart}" >&2
+    exit 2
+    ;;
+esac

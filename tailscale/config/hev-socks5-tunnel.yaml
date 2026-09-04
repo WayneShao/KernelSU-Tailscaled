@@ -1,0 +1,14 @@
+tunnel:
+  name: tailscale0
+  mtu: 1280
+  multi-queue: false
+  ipv4: 100.100.100.100
+
+socks5:
+  port: 1055
+  address: 127.0.0.1
+  udp: udp
+
+misc:
+  log-file: stdout
+  log-level: warn

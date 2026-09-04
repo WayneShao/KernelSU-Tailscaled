@@ -1,113 +1,65 @@
 #!/system/bin/sh
 SKIPUNZIP=1
-SKIPMOUNT=false
 
 if [ "$BOOTMODE" != true ]; then
-  ui_print "! Please install in Magisk Manager or KernelSU Manager"
-  ui_print "! Install from recovery is NOT supported"
-  abort "-----------------------------------------------------------"
-elif [ "$KSU" = true ] && [ "$KSU_VER_CODE" -lt 10670 ]; then
-  abort "error: Please update your KernelSU and KernelSU Manager"
+  abort "Install from Magisk or KernelSU Manager, not recovery"
 fi
 
-SERVICE_DIR="/data/adb/service.d"
-
-CUSTOM_DIR="/data/adb/tailscale"
-CUSTOM_BIN_DIR="$CUSTOM_DIR/bin"
-CUSTOM_SCRIPTS_DIR="$CUSTOM_DIR/scripts"
-CUSTOM_TMP_DIR="$CUSTOM_DIR/tmp"
-
-case $ARCH in
-    arm)   F_ARCH=$ARCH;;
-    arm64)   F_ARCH=$ARCH;;
-    *)     ui_print "Unsupported architecture: $ARCH"; abort;;
+case "$ARCH" in
+  arm | arm64) F_ARCH="$ARCH" ;;
+  *) abort "Unsupported architecture: $ARCH" ;;
 esac
-ui_print "- Detected architecture: $F_ARCH"
 
-ui_print "- Extracting module files"
-unzip -qqo "$ZIPFILE" -x 'META-INF/*' 'tailscale/*' 'files/*' -d "$MODPATH"
+TS_DIR="/data/adb/tailscale"
+TS_BIN="$TS_DIR/bin"
+TS_CONFIG="$TS_DIR/config"
+TS_LOGS="$TS_DIR/logs"
+TS_RUN="$TS_DIR/run"
+STATE_FILE="$TS_DIR/tailscaled.state"
+LEGACY_STATE="$TS_DIR/tmp/tailscaled.state"
 
-if [ -d "$CUSTOM_DIR" ]; then
-    ui_print "- Cleaning up old files"
-    for dir in "$CUSTOM_DIR/*"; do
-        if [ "$(basename "$dir")" != "tmp" ]; then
-            rm -rf "$dir"
-        fi
-    done
+ui_print "- Installing Tailscale for $F_ARCH"
+unzip -oq "$ZIPFILE" -x 'META-INF/*' 'files/*' -d "$MODPATH" || abort "Module extraction failed"
+mkdir -p "$TS_BIN" "$TS_CONFIG" "$TS_LOGS" "$TS_RUN" || abort "Runtime directory creation failed"
+
+if [ ! -f "$STATE_FILE" ] && [ -f "$LEGACY_STATE" ]; then
+  mv "$LEGACY_STATE" "$STATE_FILE" || abort "Legacy state migration failed"
+fi
+if [ -f "$STATE_FILE" ]; then
+  chmod 0600 "$STATE_FILE"
 fi
 
-ui_print "- Creating directories"
-mkdir -p "$CUSTOM_DIR" "$CUSTOM_BIN_DIR" "$CUSTOM_TMP_DIR" "$CUSTOM_SCRIPTS_DIR" "$SERVICE_DIR"
-
-ui_print "- Extracting scripts"
-unzip -qqjo "$ZIPFILE" 'tailscale/bin/*' -d "$CUSTOM_BIN_DIR"
-unzip -qqjo "$ZIPFILE" 'tailscale/scripts/*' -d "$CUSTOM_SCRIPTS_DIR"
-unzip -qqjo "$ZIPFILE" 'tailscale/settings.ini' -d "$CUSTOM_DIR"
-
-ui_print "- Extracting tailscale & tailscaled binaries"
-unzip -qqjo "$ZIPFILE" "files/tailscaled-$F_ARCH" -d "$TMPDIR"
-unzip -qqjo "$ZIPFILE" "files/tailscale-$F_ARCH" -d "$TMPDIR"
-mv -f "$TMPDIR/tailscaled-$F_ARCH" "$CUSTOM_BIN_DIR/tailscaled"
-mv -f "$TMPDIR/tailscale-$F_ARCH" "$CUSTOM_BIN_DIR/tailscale"
-
-ui_print "- Extracting hev-socks5-tunnel binaries"
-unzip -qqjo "$ZIPFILE" "files/hev-socks5-tunnel-linux-$F_ARCH" -d "$TMPDIR"
-mv -f "$TMPDIR/hev-socks5-tunnel-linux-$F_ARCH" "$CUSTOM_BIN_DIR/socks5-tunnel"
-
-ui_print "- Setting permissions"
-set_perm_recursive $CUSTOM_BIN_DIR 0 0 0755 0755
-set_perm_recursive $CUSTOM_SCRIPTS_DIR 0 0 0755 0755
-set_perm_recursive $MODPATH/system/bin 0 0 0755 0755
-set_perm $MODPATH/service.sh 0 0 0755
-
-if [ ! -f "$SERVICE_DIR/tailscaled_service.sh" ]; then
-    # offer to move module scripts to general scripts
-    ui_print "-----------------------------------------------------------"
-    ui_print "- Do you want to move Module Scripts to General Scripts ?"
-    ui_print "- This option allows you to toggle the 'tailscaled' service"
-    ui_print "  on or off by enabling or disabling modules."
-    ui_print "- Your service directory is :"
-    ui_print "  '$SERVICE_DIR'."
-    ui_print "- Because the Developer Guides mentioned :"
-    ui_print "  Modules should NOT add general scripts during installation."
-    ui_print "- I offer this option to you."
-    ui_print "- You have 10 seconds to make a selection. Default is [Yes]."
-    ui_print "- [ Vol UP(+): Yes ]"
-    ui_print "- [ Vol DOWN(-): No ]"
-    start_time=`date +%s`
-    while true; do
-      current_time=`date +%s`
-      time_diff=`expr $current_time - $start_time`
-      if [ $time_diff -ge 10 ]; then
-        ui_print "- Time's up! Proceeding with default option [Yes]."
-        ui_print "- Move Module Scripts to General Scripts."
-        mv -f "$MODPATH/service.sh" "$SERVICE_DIR/tailscaled_service.sh"
-        break
-      fi
-      timeout 1s getevent -lc 1 2>&1 | grep KEY_VOLUME > $TMPDIR/events
-      if $(cat $TMPDIR/events | grep -q KEY_VOLUMEUP) ; then
-        ui_print "- [Yes] Move Module Scripts to General Scripts."
-        mv -f "$MODPATH/service.sh" "$SERVICE_DIR/tailscaled_service.sh"
-        break
-      elif $(cat $TMPDIR/events | grep -q KEY_VOLUMEDOWN) ; then
-        ui_print "- [No] Skip and keep using Module Scripts."
-        break
-      fi
-    done
-else
-    ui_print "- Move General Scripts."
-    mv -f "$MODPATH/service.sh" "$SERVICE_DIR/tailscaled_service.sh"
+if [ ! -f "$TS_CONFIG/module.conf" ]; then
+  cp "$MODPATH/tailscale/config/module.conf" "$TS_CONFIG/module.conf" || abort "Default configuration install failed"
+  chmod 0600 "$TS_CONFIG/module.conf"
 fi
 
-ui_print "-----------------------------------------------------------"
-ui_print " Instructions       "
-ui_print "-----------------------------------------------------------"
-ui_print "- Reboot your device."
-ui_print "- Start Tailscale service :"
-ui_print "  su -c 'tailscaled.service start'"
-ui_print "- Login to your Tailscale account :"
-ui_print "  su -c 'tailscale login'"
-ui_print "  su -c 'tailscale set --accept-dns=false'"
-ui_print "- Read the README.md"
-ui_print "- Logs :"
-ui_print "  '$CUSTOM_DIR/run/'"
+unzip -p "$ZIPFILE" "files/tailscale-$F_ARCH" > "$TS_BIN/tailscale.new" || abort "Missing tailscale binary"
+unzip -p "$ZIPFILE" "files/tailscaled-$F_ARCH" > "$TS_BIN/tailscaled.new" || abort "Missing tailscaled binary"
+chmod 0755 "$TS_BIN/tailscale.new" "$TS_BIN/tailscaled.new"
+"$TS_BIN/tailscale.new" version >/dev/null 2>&1 || abort "Invalid tailscale binary"
+"$TS_BIN/tailscaled.new" --version >/dev/null 2>&1 || abort "Invalid tailscaled binary"
+mv -f "$TS_BIN/tailscale.new" "$TS_BIN/tailscale"
+mv -f "$TS_BIN/tailscaled.new" "$TS_BIN/tailscaled"
+
+if unzip -l "$ZIPFILE" "files/hev-socks5-tunnel-linux-$F_ARCH" 2>/dev/null | grep -q "hev-socks5-tunnel-linux-$F_ARCH"; then
+  unzip -p "$ZIPFILE" "files/hev-socks5-tunnel-linux-$F_ARCH" > "$TS_BIN/hev-socks5-tunnel.new" || abort "Tunnel binary extraction failed"
+  chmod 0755 "$TS_BIN/hev-socks5-tunnel.new"
+  mv -f "$TS_BIN/hev-socks5-tunnel.new" "$TS_BIN/hev-socks5-tunnel"
+fi
+
+rm -rf "$TS_DIR/scripts"
+rm -f "$TS_DIR/settings.ini" "$TS_DIR/settings.sh"
+
+set_perm_recursive "$MODPATH/tailscale/scripts" 0 0 0755 0755
+set_perm_recursive "$MODPATH/tailscale/config" 0 0 0755 0644
+set_perm "$MODPATH/service.sh" 0 0 0755
+set_perm "$MODPATH/action.sh" 0 0 0755
+set_perm "$MODPATH/uninstall.sh" 0 0 0755
+set_perm_recursive "$TS_BIN" 0 0 0755 0755
+set_perm_recursive "$TS_CONFIG" 0 0 0700 0600
+set_perm_recursive "$TS_LOGS" 0 0 0700 0600
+set_perm_recursive "$TS_RUN" 0 0 0700 0600
+
+ui_print "- Existing Tailscale state and preferences were preserved"
+ui_print "- Reboot, then open Details to sign in"

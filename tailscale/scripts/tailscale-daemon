@@ -1,0 +1,45 @@
+#!/system/bin/sh
+SCRIPT_DIR=${0%/*}
+. "$SCRIPT_DIR/common.sh"
+load_config || exit 1
+
+daemon_health() {
+  pid=$(read_pid "$DAEMON_PID") || return 1
+  pid_matches "$pid" "$TAILSCALED_BIN" && socket_ready
+}
+
+daemon_start() {
+  daemon_health && return 0
+  mkdir -p "$RUN_DIR" "$LOG_DIR"
+  rm -f "$SOCKET_FILE"
+  if [ "$MODE" = "userspace" ]; then
+    nohup "$TAILSCALED_BIN" --tun=userspace-networking --socks5-server="$SOCKS_LISTEN" \
+      --state="$STATE_FILE" --socket="$SOCKET_FILE" --port="$TAILSCALE_PORT" \
+      --no-logs-no-support >> "$LOG_DIR/tailscaled.log" 2>&1 &
+  else
+    nohup "$TAILSCALED_BIN" --tun="$TUN_NAME" --state="$STATE_FILE" \
+      --socket="$SOCKET_FILE" --port="$TAILSCALE_PORT" \
+      --no-logs-no-support >> "$LOG_DIR/tailscaled.log" 2>&1 &
+  fi
+  pid=$!
+  write_pid "$DAEMON_PID" "$pid"
+  count=0
+  while [ "$count" -lt 30 ]; do
+    daemon_health && return 0
+    pid_matches "$pid" "$TAILSCALED_BIN" || break
+    sleep 1
+    count=$((count + 1))
+  done
+  stop_owned "$DAEMON_PID" "$TAILSCALED_BIN"
+  return 1
+}
+
+case "$1" in
+  start) daemon_start ;;
+  stop)
+    stop_owned "$DAEMON_PID" "$TAILSCALED_BIN"
+    rm -f "$SOCKET_FILE"
+    ;;
+  health) daemon_health ;;
+  *) echo "usage: tailscale-daemon {start|stop|health}" >&2; exit 2 ;;
+esac

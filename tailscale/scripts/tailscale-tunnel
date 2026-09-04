@@ -1,0 +1,50 @@
+#!/system/bin/sh
+SCRIPT_DIR=${0%/*}
+. "$SCRIPT_DIR/common.sh"
+load_config || exit 1
+
+tunnel_health() {
+  [ "$MODE" = "native" ] && return 0
+  pid=$(read_pid "$TUNNEL_PID") || return 1
+  pid_matches "$pid" "$TUNNEL_BIN" && ip link show "$TUN_NAME" >/dev/null 2>&1
+}
+
+tunnel_start() {
+  [ "$MODE" = "native" ] && return 0
+  tunnel_health && return 0
+  [ -x "$TUNNEL_BIN" ] || return 1
+  socks_port=${SOCKS_LISTEN##*:}
+  template="$MODDIR/tailscale/config/hev-socks5-tunnel.yaml"
+  runtime_config="$RUN_DIR/hev-socks5-tunnel.yaml"
+  sed -e "s/name: tailscale0/name: $TUN_NAME/" -e "s/port: 1055/port: $socks_port/" "$template" > "$runtime_config"
+  nohup "$TUNNEL_BIN" "$runtime_config" >> "$LOG_DIR/tunnel.log" 2>&1 &
+  pid=$!
+  write_pid "$TUNNEL_PID" "$pid"
+  count=0
+  while [ "$count" -lt 15 ]; do
+    if tunnel_health; then
+      ip route replace 100.64.0.0/10 dev "$TUN_NAME" metric 5
+      return 0
+    fi
+    pid_matches "$pid" "$TUNNEL_BIN" || break
+    sleep 1
+    count=$((count + 1))
+  done
+  stop_owned "$TUNNEL_PID" "$TUNNEL_BIN"
+  return 1
+}
+
+tunnel_stop() {
+  if [ "$MODE" = "userspace" ] && ip route show 100.64.0.0/10 2>/dev/null | grep -q "dev $TUN_NAME"; then
+    ip route del 100.64.0.0/10 dev "$TUN_NAME" >/dev/null 2>&1 || true
+  fi
+  stop_owned "$TUNNEL_PID" "$TUNNEL_BIN"
+  rm -f "$RUN_DIR/hev-socks5-tunnel.yaml"
+}
+
+case "$1" in
+  start) tunnel_start ;;
+  stop) tunnel_stop ;;
+  health) tunnel_health ;;
+  *) echo "usage: tailscale-tunnel {start|stop|health}" >&2; exit 2 ;;
+esac

@@ -1,0 +1,52 @@
+#!/system/bin/sh
+SCRIPT_DIR=${0%/*}
+. "$SCRIPT_DIR/common.sh"
+load_config || exit 1
+
+stop_components() {
+  "$WEB_SCRIPT" stop >/dev/null 2>&1 || true
+  "$TUNNEL_SCRIPT" stop >/dev/null 2>&1 || true
+  "$DAEMON_SCRIPT" stop >/dev/null 2>&1 || true
+}
+
+trap 'stop_components; exit 0' TERM INT HUP
+backoff=1
+healthy_since=0
+
+while ! module_disabled; do
+  if ! "$DAEMON_SCRIPT" health >/dev/null 2>&1; then
+    "$WEB_SCRIPT" stop >/dev/null 2>&1 || true
+    "$TUNNEL_SCRIPT" stop >/dev/null 2>&1 || true
+    "$DAEMON_SCRIPT" stop >/dev/null 2>&1 || true
+    if "$DAEMON_SCRIPT" start; then
+      "$TUNNEL_SCRIPT" start || log ERROR "Data-plane helper failed"
+      "$WEB_SCRIPT" start || log WARN "Local web component failed"
+      healthy_since=$(date +%s)
+    else
+      log ERROR "tailscaled start failed; retrying in ${backoff}s"
+      sleep "$backoff"
+      backoff=$((backoff * 2))
+      [ "$backoff" -gt "$RESTART_BACKOFF_MAX" ] && backoff="$RESTART_BACKOFF_MAX"
+      continue
+    fi
+  else
+    if ! "$TUNNEL_SCRIPT" health >/dev/null 2>&1; then
+      "$TUNNEL_SCRIPT" stop >/dev/null 2>&1 || true
+      "$TUNNEL_SCRIPT" start || log ERROR "Data-plane helper recovery failed"
+    fi
+    if ! "$WEB_SCRIPT" health >/dev/null 2>&1; then
+      "$WEB_SCRIPT" stop >/dev/null 2>&1 || true
+      "$WEB_SCRIPT" start || log WARN "Local web recovery failed"
+    fi
+    now=$(date +%s)
+    if [ "$healthy_since" -eq 0 ]; then
+      healthy_since="$now"
+    elif [ $((now - healthy_since)) -ge 60 ]; then
+      backoff=1
+    fi
+  fi
+  sleep "$SUPERVISOR_INTERVAL"
+done
+
+stop_components
+exit 0
