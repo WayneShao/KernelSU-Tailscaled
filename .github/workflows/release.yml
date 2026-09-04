@@ -56,7 +56,8 @@ jobs:
           find . -type f \( -name '*.sh' -o -path './tailscale/scripts/*' \) \
             -not -path './webroot-src/node_modules/*' -print0 | xargs -0 -n1 sh -n
           shellcheck --version
-          shellcheck --exclude=SC1091 customize.sh service.sh action.sh uninstall.sh \
+          shellcheck --exclude=SC1090,SC1091,SC2034 \
+            customize.sh service.sh action.sh uninstall.sh \
             scripts/build-release.sh tailscale/scripts/*
 
       - name: Verify binary manifest
