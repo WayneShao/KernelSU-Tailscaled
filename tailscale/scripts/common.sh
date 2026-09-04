@@ -59,6 +59,10 @@ load_config() {
     127.0.0.1:[0-9]*) ;;
     *) log ERROR "SOCKS_LISTEN must use IPv4 loopback"; return 1 ;;
   esac
+  case "${CONTROL_PROXY:-}" in
+    '' | http://127.0.0.1:[0-9]* | socks5://127.0.0.1:[0-9]*) ;;
+    *) log ERROR "CONTROL_PROXY must use IPv4 loopback"; return 1 ;;
+  esac
 }
 
 read_pid() {

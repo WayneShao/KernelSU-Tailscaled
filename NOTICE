@@ -1,0 +1,14 @@
+Magisk Tailscaled
+Copyright (c) 2023 ANASFANANI, ryukora, WayneShao, and contributors.
+
+This distribution includes the KernelSU JavaScript bridge, licensed under
+Apache License 2.0. The license text is bundled at
+webroot/licenses/Apache-2.0.txt.
+
+This distribution includes Lucide icons under the ISC license and icons
+derived from Feather under the MIT license. The applicable notices and license
+texts are bundled at webroot/licenses/Lucide.txt.
+
+Tailscale and tailscaled binaries are distributed under the BSD 3-Clause
+license by Tailscale Inc and contributors. hev-socks5-tunnel is distributed
+under the BSD 3-Clause license by its respective authors. See LICENSE.

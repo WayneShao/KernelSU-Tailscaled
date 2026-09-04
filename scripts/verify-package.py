@@ -9,11 +9,15 @@ from pathlib import Path
 
 
 REQUIRED_ENTRIES = {
+    "META-INF/com/google/android/update-binary",
+    "META-INF/com/google/android/updater-script",
     "module.prop",
     "customize.sh",
     "service.sh",
     "uninstall.sh",
     "webroot/index.html",
+    "webroot/licenses/Apache-2.0.txt",
+    "webroot/licenses/Lucide.txt",
     "tailscale/config/module.conf",
     "tailscale/scripts/tailscale-service",
     "files/manifest.sha256",
@@ -71,6 +75,7 @@ def unix_mode(info: zipfile.ZipInfo) -> int:
 def is_executable_path(name: str) -> bool:
     return (
         name in {"customize.sh", "service.sh", "action.sh", "uninstall.sh"}
+        or name == "META-INF/com/google/android/update-binary"
         or name.startswith("tailscale/scripts/")
         or name.startswith("system/bin/")
         or name.startswith("files/tailscale-")

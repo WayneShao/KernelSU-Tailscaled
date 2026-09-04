@@ -1,1 +1,31 @@
-Please read from here : https://github.com/ryukora/Magisk-Tailscaled/releases/latest
+v1.102.3.1
+
+- Added a compact KernelSU WebUI with module enable/disable, refresh, IP copy,
+  runtime restart, recent logs, component health, and official local-panel
+  navigation.
+- Switched the default data plane to native TUN while retaining an explicit
+  userspace fallback mode.
+- Added an owned-process supervisor for tailscaled, the optional userspace
+  tunnel, and the loopback-only Tailscale web service.
+- Preserved Tailscale identity, preferences, configuration, and logs across
+  in-place upgrades.
+- Added one-time Android product-name initialization so new nodes do not first
+  register as localhost.
+- Preferred the control-plane DNS name in the dashboard so admin-side node
+  renames are reflected immediately.
+- Added an optional loopback CONTROL_PROXY for Android Fake-IP environments;
+  peer and WireGuard traffic remain on the native Tailscale data plane.
+- Added fixed-command KernelSU bridge calls and strict JSON/status validation;
+  no arbitrary shell input is exposed by the WebUI.
+- Added deterministic full, arm, and arm64 packages with per-payload SHA-256
+  manifests and package structure verification.
+
+Validation
+
+- Verified Tailscale 1.102.3 arm64 binaries against the recorded SHA-256
+  values.
+- Installed and exercised the module on PKX110 and nezha KernelSU devices.
+- Confirmed both devices reached BackendState=Running without disabling or
+  modifying their existing ZeroTier modules.
+- Verified hostname display using backend DNS names and local hostname
+  initialization without an Android reboot.

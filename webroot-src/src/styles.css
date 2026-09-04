@@ -1,0 +1,54 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #1d2528;
+  background: #f4f6f6;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #f4f6f6; }
+
+#app { width: min(100%, 720px); min-height: 100vh; margin: 0 auto; padding: 28px 18px 40px; }
+
+header { padding: 4px 2px 20px; border-bottom: 1px solid #d5dcdd; }
+.eyebrow { margin: 0 0 6px; color: #557075; font-size: 12px; font-weight: 700; }
+h1 { margin: 0; overflow-wrap: anywhere; font-size: 26px; line-height: 1.25; letter-spacing: 0; }
+.backend-state { margin: 8px 0 0; color: #566266; font-size: 14px; }
+.backend-state[data-connected="true"] { color: #087b58; }
+
+section { padding: 20px 2px; border-bottom: 1px solid #d5dcdd; }
+h2 { margin: 0 0 12px; font-size: 15px; letter-spacing: 0; }
+dl { margin: 0; }
+.fact-row, .component-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 1.4fr); align-items: center; min-height: 38px; gap: 14px; }
+dt, .component-row > span:first-child { color: #637074; font-size: 13px; }
+dd, .component-value { min-width: 0; margin: 0; overflow-wrap: anywhere; text-align: right; font-size: 14px; }
+.component-row[data-state="running"] .component-value { color: #087b58; }
+.component-row[data-state="stopped"] .component-value { color: #a03d32; }
+
+nav { display: grid; gap: 8px; }
+.primary-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 18px 0 2px; }
+.secondary-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 20px 0 0; }
+button { display: inline-flex; align-items: center; justify-content: center; min-width: 0; min-height: 44px; gap: 8px; border: 1px solid #b9c5c7; border-radius: 6px; padding: 9px 12px; color: #1d2528; background: #fff; font: inherit; font-size: 14px; }
+button:active { background: #e9eeee; }
+button:disabled { cursor: default; opacity: .45; }
+button svg { flex: 0 0 18px; }
+button span { min-width: 0; overflow-wrap: anywhere; }
+
+pre { max-height: 62vh; margin: 20px 0 0; overflow: auto; border: 1px solid #d5dcdd; border-radius: 6px; padding: 14px; color: #d9e2e3; background: #202729; font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.message { margin: 20px 2px 0; color: #566266; line-height: 1.55; overflow-wrap: anywhere; }
+
+@media (min-width: 560px) {
+  #app { padding-inline: 28px; }
+  .primary-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root, body { color: #e7eded; background: #151a1b; }
+  header, section { border-color: #354043; }
+  .eyebrow, dt, .component-row > span:first-child, .backend-state, .message { color: #9dacaf; }
+  button { color: #e7eded; border-color: #465356; background: #22292b; }
+  button:active { background: #303a3c; }
+  pre { border-color: #465356; background: #0e1213; }
+}

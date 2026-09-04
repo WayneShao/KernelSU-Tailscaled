@@ -1,0 +1,14 @@
+{
+  "enabled": false,
+  "mode": "native",
+  "moduleVersion": "1.102.3.1",
+  "tailscaleVersion": "1.102.3",
+  "components": {
+    "supervisor": "stopped",
+    "daemon": "stopped",
+    "dataPlane": "stopped",
+    "web": "stopped"
+  },
+  "tailscale": null,
+  "prefs": null
+}

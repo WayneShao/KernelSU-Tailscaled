@@ -1,0 +1,122 @@
+name: Build, Verify, and Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: webroot-src/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: webroot-src
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Verify Python contracts
+        run: python -m unittest discover -s tests -v
+
+      - name: Verify frontend
+        working-directory: webroot-src
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Verify committed WebUI build
+        run: git diff --exit-code -- webroot
+
+      - name: Verify shell scripts
+        run: |
+          find . -type f \( -name '*.sh' -o -path './tailscale/scripts/*' \) \
+            -not -path './webroot-src/node_modules/*' -print0 | xargs -0 -n1 sh -n
+          shellcheck --version
+          shellcheck --exclude=SC1091 customize.sh service.sh action.sh uninstall.sh \
+            scripts/build-release.sh tailscale/scripts/*
+
+      - name: Verify binary manifest
+        run: sha256sum --check files/manifest.sha256
+
+      - name: Build packages
+        run: sh scripts/build-release.sh --use-existing-binaries --output dist
+
+      - name: Verify packages
+        run: |
+          version=$(sed -n 's/^version=//p' module.prop)
+          python scripts/verify-package.py \
+            --zip "dist/Magisk-Tailscaled-v${version}.zip" --arch all
+          python scripts/verify-package.py \
+            --zip "dist/Magisk-Tailscaled-arm-v${version}.zip" --arch arm
+          python scripts/verify-package.py \
+            --zip "dist/Magisk-Tailscaled-arm64-v${version}.zip" --arch arm64
+
+      - name: Verify reproducible package bytes
+        run: |
+          sha256sum dist/*.zip | sed 's#dist/##' > /tmp/first-build.sha256
+          rm -rf dist
+          sh scripts/build-release.sh --use-existing-binaries --output dist
+          sha256sum dist/*.zip | sed 's#dist/##' > /tmp/second-build.sha256
+          diff -u /tmp/first-build.sha256 /tmp/second-build.sha256
+
+      - name: Upload verified packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: Magisk-Tailscaled-packages
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+
+      - name: Download verified packages
+        uses: actions/download-artifact@v4
+        with:
+          name: Magisk-Tailscaled-packages
+          path: dist
+
+      - name: Verify tag matches module version
+        run: |
+          version=$(sed -n 's/^version=//p' module.prop)
+          test "${GITHUB_REF_NAME}" = "v${version}"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/*.zip \
+            --verify-tag \
+            --title "Magisk Tailscaled ${GITHUB_REF_NAME}" \
+            --notes-file CHANGELOG.txt

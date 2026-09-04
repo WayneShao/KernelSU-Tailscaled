@@ -34,9 +34,13 @@ def good_entries() -> dict[str, bytes]:
                 b"description=test fixture\n"
             ),
             "customize.sh": b"#!/system/bin/sh\nexit 0\n",
+            "META-INF/com/google/android/update-binary": b"#!/system/bin/sh\nexit 0\n",
+            "META-INF/com/google/android/updater-script": b"#MAGISK\n",
             "service.sh": b"#!/system/bin/sh\nexit 0\n",
             "uninstall.sh": b"#!/system/bin/sh\nexit 0\n",
             "webroot/index.html": b"<!doctype html><title>Tailscale</title>\n",
+            "webroot/licenses/Apache-2.0.txt": b"Apache License 2.0 fixture\n",
+            "webroot/licenses/Lucide.txt": b"Lucide license fixture\n",
             "tailscale/config/module.conf": b"MODE=native\n",
             "tailscale/scripts/tailscale-service": b"#!/system/bin/sh\nexit 0\n",
             "files/tailscale-arm": b"arm-cli",
@@ -51,6 +55,7 @@ def good_entries() -> dict[str, bytes]:
 def write_zip(path: Path, entries: dict[str, bytes]) -> None:
     executable = {
         "customize.sh",
+        "META-INF/com/google/android/update-binary",
         "service.sh",
         "uninstall.sh",
         "tailscale/scripts/tailscale-service",
@@ -147,6 +152,14 @@ class PackageVerifierTests(unittest.TestCase):
         entries.pop("module.prop")
         self.assert_rejected(entries, "missing required entry: module.prop")
 
+    def test_rejects_missing_installer_entrypoint(self) -> None:
+        entries = good_entries()
+        entries.pop("META-INF/com/google/android/update-binary")
+        self.assert_rejected(
+            entries,
+            "missing required entry: META-INF/com/google/android/update-binary",
+        )
+
     def test_rejects_invalid_module_id(self) -> None:
         entries = good_entries()
         entries["module.prop"] = entries["module.prop"].replace(
@@ -158,6 +171,11 @@ class PackageVerifierTests(unittest.TestCase):
         entries = good_entries()
         entries.pop("webroot/index.html")
         self.assert_rejected(entries, "missing required entry: webroot/index.html")
+
+    def test_rejects_missing_webui_license(self) -> None:
+        entries = good_entries()
+        entries.pop("webroot/licenses/Lucide.txt")
+        self.assert_rejected(entries, "missing required entry: webroot/licenses/Lucide.txt")
 
     def test_rejects_crlf_shell_script(self) -> None:
         entries = good_entries()

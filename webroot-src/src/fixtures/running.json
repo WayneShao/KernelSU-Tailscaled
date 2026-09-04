@@ -1,0 +1,25 @@
+{
+  "enabled": true,
+  "mode": "native",
+  "moduleVersion": "1.102.3.1",
+  "tailscaleVersion": "1.102.3",
+  "components": {
+    "supervisor": "running",
+    "daemon": "running",
+    "dataPlane": "running",
+    "web": "running"
+  },
+  "tailscale": {
+    "BackendState": "Running",
+    "Self": {
+      "HostName": "localhost",
+      "DNSName": "pkx110.tail10670e.ts.net.",
+      "TailscaleIPs": ["100.64.10.20", "fd7a:115c:a1e0::1"]
+    }
+  },
+  "prefs": {
+    "RouteAll": false,
+    "CorpDNS": false,
+    "ExitNodeID": ""
+  }
+}

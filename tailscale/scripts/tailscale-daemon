@@ -2,16 +2,55 @@
 SCRIPT_DIR=${0%/*}
 . "$SCRIPT_DIR/common.sh"
 load_config || exit 1
+HOSTNAME_MARKER="$TS_DIR/hostname.initialized"
 
 daemon_health() {
   pid=$(read_pid "$DAEMON_PID") || return 1
   pid_matches "$pid" "$TAILSCALED_BIN" && socket_ready
 }
 
+initialize_hostname() {
+  [ -f "$HOSTNAME_MARKER" ] && return 0
+  current=$(
+    "$TAILSCALE_BIN" --socket="$SOCKET_FILE" debug prefs 2>/dev/null |
+      sed -n 's/^[[:space:]]*"Hostname":[[:space:]]*"\([^"]*\)".*/\1/p' |
+      head -n 1
+  )
+  case "$current" in
+    '' | localhost) ;;
+    *) : > "$HOSTNAME_MARKER"; return 0 ;;
+  esac
+
+  raw_name="${DEVICE_HOSTNAME:-}"
+  [ -n "$raw_name" ] || raw_name=$(getprop ro.product.name 2>/dev/null)
+  [ -n "$raw_name" ] || raw_name=$(getprop ro.product.model 2>/dev/null)
+  hostname=$(
+    printf '%s' "$raw_name" |
+      tr '[:upper:]' '[:lower:]' |
+      sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/^-//; s/-$//'
+  )
+  [ -n "$hostname" ] || return 0
+  if "$TAILSCALE_BIN" --socket="$SOCKET_FILE" set --hostname="$hostname"; then
+    : > "$HOSTNAME_MARKER"
+    log INFO "Initialized Tailscale hostname: $hostname"
+  else
+    log WARN "Tailscale hostname initialization failed"
+    return 1
+  fi
+}
+
 daemon_start() {
-  daemon_health && return 0
+  if daemon_health; then
+    initialize_hostname
+    return 0
+  fi
   mkdir -p "$RUN_DIR" "$LOG_DIR"
   rm -f "$SOCKET_FILE"
+  if [ -n "${CONTROL_PROXY:-}" ]; then
+    export HTTP_PROXY="$CONTROL_PROXY"
+    export HTTPS_PROXY="$CONTROL_PROXY"
+    export NO_PROXY="127.0.0.1,localhost"
+  fi
   if [ "$MODE" = "userspace" ]; then
     nohup "$TAILSCALED_BIN" --tun=userspace-networking --socks5-server="$SOCKS_LISTEN" \
       --state="$STATE_FILE" --socket="$SOCKET_FILE" --port="$TAILSCALE_PORT" \
@@ -25,7 +64,10 @@ daemon_start() {
   write_pid "$DAEMON_PID" "$pid"
   count=0
   while [ "$count" -lt 30 ]; do
-    daemon_health && return 0
+    if daemon_health; then
+      initialize_hostname
+      return 0
+    fi
     pid_matches "$pid" "$TAILSCALED_BIN" || break
     sleep 1
     count=$((count + 1))

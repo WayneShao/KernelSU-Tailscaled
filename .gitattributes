@@ -6,6 +6,8 @@
 *.yml text eol=lf
 *.json text eol=lf
 *.md text eol=lf
+files/VERSION.txt text eol=lf
+tailscale/scripts/* text eol=lf
 files/tailscale-* binary
 files/tailscaled-* binary
 files/hev-socks5-tunnel-* binary

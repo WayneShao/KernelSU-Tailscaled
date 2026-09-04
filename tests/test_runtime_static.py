@@ -119,6 +119,23 @@ class RuntimeStaticTests(unittest.TestCase):
         self.assertIn('web --listen="$WEB_LISTEN"', source)
         self.assertIn('WEB_LISTEN=127.0.0.1:8088', (ROOT / "tailscale/config/module.conf").read_text(encoding="utf-8"))
 
+    def test_control_proxy_is_explicit_and_optional(self) -> None:
+        config = (ROOT / "tailscale/config/module.conf").read_text(encoding="utf-8")
+        daemon = (ROOT / "tailscale/scripts/tailscale-daemon").read_text(encoding="utf-8")
+        self.assertIn("CONTROL_PROXY=\n", config)
+        self.assertIn('HTTPS_PROXY="$CONTROL_PROXY"', daemon)
+        self.assertIn('NO_PROXY="127.0.0.1,localhost"', daemon)
+
+    def test_hostname_is_initialized_once_from_android_product_name(self) -> None:
+        config = (ROOT / "tailscale/config/module.conf").read_text(encoding="utf-8")
+        daemon = (ROOT / "tailscale/scripts/tailscale-daemon").read_text(encoding="utf-8")
+        self.assertIn("DEVICE_HOSTNAME=\n", config)
+        self.assertIn('HOSTNAME_MARKER="$TS_DIR/hostname.initialized"', daemon)
+        self.assertIn("initialize_hostname()", daemon)
+        self.assertIn("getprop ro.product.name", daemon)
+        self.assertIn('set --hostname="$hostname"', daemon)
+        self.assertIn('[ -f "$HOSTNAME_MARKER" ] && return 0', daemon)
+
     def test_legacy_runtime_files_are_removed(self) -> None:
         legacy = {
             "tailscale/settings.ini",
