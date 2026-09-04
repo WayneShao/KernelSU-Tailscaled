@@ -101,9 +101,23 @@ The dashboard provides these fixed actions:
 
 - refresh status;
 - copy the Tailscale IP;
+- enable or disable the module runtime;
 - restart the module runtime;
 - open recent logs;
 - open the full Tailscale panel.
+
+The KernelSU module card exposes both native shortcuts:
+
+- the Action/Run button executes `action.sh`, which atomically toggles the
+  module `disable` marker and immediately stops or starts the owned runtime;
+- the Details/WebUI button opens `webroot/index.html`.
+
+Disabling from KernelSU's normal module switch is also an immediate runtime
+operation: the supervisor observes the `disable` marker, stops `tailscale web`,
+the optional userspace helper, and `tailscaled`, then exits without leaving
+data-plane processes behind. Enabling through the Action/Run button removes
+the marker and starts the supervisor immediately. Normal boot starts the
+runtime only when the module is enabled.
 
 The dashboard reports Tailscale preferences but does not enforce or rewrite
 them. Migration-specific settings such as `accept-routes=false` and
@@ -216,8 +230,11 @@ Health is not inferred from a PID file alone. A healthy component requires:
 - its expected socket or listener where applicable;
 - a successful CLI status probe for `tailscaled`.
 
-The manager script exposes `start`, `stop`, `restart`, `status`, `status-json`,
-`logs`, and `web-restart`. Commands are idempotent.
+The manager script exposes `enable`, `disable`, `toggle`, `start`, `stop`,
+`restart`, `status`, `status-json`, `logs`, and `web-restart`. Commands are
+idempotent. `enable`, `disable`, and `toggle` own the module `disable` marker;
+`start` and `stop` operate only on the current runtime and do not silently
+change the module's persistent enabled state.
 
 ### Tailscaled
 
@@ -265,6 +282,8 @@ identity and TCP listener. A web crash does not restart the data plane.
   classify temporary coordination loss as a daemon failure.
 - Module disable: terminate only PIDs whose command lines match module-owned
   executables, then remove module-created routes and runtime files.
+- Action/Run toggle: switch the `disable` marker and runtime together so the
+  module-card state and actual service state cannot intentionally diverge.
 
 ## 9. Security
 
