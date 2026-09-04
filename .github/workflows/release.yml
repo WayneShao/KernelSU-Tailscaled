@@ -20,15 +20,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
@@ -85,7 +85,7 @@ jobs:
           diff -u /tmp/first-build.sha256 /tmp/second-build.sha256
 
       - name: Upload verified packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Magisk-Tailscaled-packages
           path: dist/*.zip
@@ -100,10 +100,10 @@ jobs:
       contents: write
     steps:
       - name: Check out tagged source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download verified packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: Magisk-Tailscaled-packages
           path: dist
