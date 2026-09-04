@@ -1,5 +1,7 @@
 .superpowers/
+.device-tests/
+.tailscale-downloads/
+dist/
 webroot-src/node_modules/
 webroot-src/dist/
 *.zip
-
