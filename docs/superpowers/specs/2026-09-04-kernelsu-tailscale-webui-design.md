@@ -40,6 +40,25 @@ validated statically in the first release.
   files match the official static package byte for byte by SHA-256.
 - Neither upstream module contains a KernelSU `webroot`.
 
+### Implementation feasibility gates
+
+Before restructuring the module, prove the three uncertain platform boundaries
+with disposable runtime tests:
+
+1. run the official Tailscale 1.102.3 arm64 daemon in native TUN mode on each
+   phone, one at a time, and verify that its local API socket, `tailscale0`,
+   route installation, and network rebinding work on Android;
+2. run the packaged `tailscale web` against the module's explicit socket and
+   verify localhost access while the backend is both `NeedsLogin` and
+   `Running`;
+3. install a minimal KernelSU `webroot` probe that uses the official JavaScript
+   bridge and navigates the manager WebView to `http://127.0.0.1:8088/`.
+
+A failed gate changes the implementation plan before broad refactoring. Native
+TUN failure selects the explicit userspace compatibility path for that device.
+WebView navigation failure selects a launcher-mediated external browser open,
+not an iframe or a second implementation of the Tailscale panel.
+
 ## 3. Scope
 
 ### In scope
@@ -86,6 +105,12 @@ The dashboard provides these fixed actions:
 - open recent logs;
 - open the full Tailscale panel.
 
+The dashboard reports Tailscale preferences but does not enforce or rewrite
+them. Migration-specific settings such as `accept-routes=false` and
+`accept-dns=false` are applied explicitly by the deployment procedure after a
+device logs in. Existing users upgrading the public module keep their current
+preferences.
+
 The full-panel action navigates the WebView to
 `http://127.0.0.1:8088/`. It does not use an iframe. Tailscale owns login,
 check-mode authentication, and all advanced setting changes.
@@ -97,6 +122,10 @@ navigation.
 The dashboard bundles the Apache-2.0 `kernelsu` JavaScript bridge. Calls to
 `exec` invoke only fixed module scripts and enumerated action arguments.
 User-controlled strings are never interpolated into shell commands.
+
+Maintainable WebUI source lives in `webroot-src/`; reproducible production
+assets are committed under `webroot/` so module installation and use do not
+require Node.js or internet access.
 
 ## 5. Repository And Packaging
 
@@ -271,14 +300,18 @@ For each of `PKX110` and `nezha`:
 1. capture current module, process, state-file hash, ZeroTier identity, routes,
    and ADB reachability;
 2. install the new ZIP as an in-place module update;
-3. reboot and confirm the same Tailscale state file remains;
+3. reboot and confirm the canonical state path was reused and the Tailscale
+   machine/node identity is continuous; the file hash may legitimately change
+   when a newer daemon updates its state;
 4. confirm exactly one supervisor, daemon, selected tunnel helper, and web
    process;
 5. confirm native `tailscale0`, Tailscale IP, backend state, disabled route and
    DNS acceptance, and localhost:8088;
 6. open the KernelSU WebUI and official panel on the physical device;
 7. authenticate through the official panel without enabling subnet routes;
-8. verify Tailscale-layer ping and actual TCP access to known tailnet devices;
+8. explicitly set `accept-routes=false` and `accept-dns=false` for the migration,
+   then verify Tailscale-layer ping and actual TCP access to known tailnet
+   devices;
 9. switch Wi-Fi to cellular and back, checking rebinding and recovery;
 10. kill web, daemon, and supervisor children separately and verify bounded
     recovery without duplicates;
@@ -306,10 +339,10 @@ The first release may state:
 - KernelSU shows the hybrid dashboard and all fixed actions work.
 - The official Tailscale panel opens from the dashboard on localhost only.
 - Login can be completed from the official panel.
-- Route acceptance and DNS acceptance remain disabled after login.
+- The deployment procedure can set route and DNS acceptance off after login,
+  and the module preserves those preferences across restart and reboot.
 - The dashboard never reports healthy from a stale PID file.
 - Killing any one owned process produces bounded recovery without duplicates.
 - Wi-Fi and cellular transitions do not require manual service restarts.
 - Packaged Tailscale binaries match verified official artifacts.
 - Existing ZeroTier connectivity remains intact throughout module validation.
-
