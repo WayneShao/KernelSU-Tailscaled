@@ -107,60 +107,11 @@ jobs:
       startsWith(github.ref, 'refs/tags/v2.') &&
       (contains(github.ref_name, '-') || vars.STABLE_RELEASE_APPROVED == 'true')
     needs: build
-    runs-on: ubuntu-latest
-    environment: source-release
+    uses: ./.github/workflows/publish-source.yml
+    with:
+      tag: ${{ github.ref_name }}
+      build_run_id: ${{ github.run_id }}
+    secrets: inherit
     permissions:
       contents: write
-    steps:
-      - name: Check out tagged source
-        uses: actions/checkout@v7
-
-      - name: Download verified packages
-        uses: actions/download-artifact@v8
-        with:
-          name: KernelSU-Tailscaled-packages
-          path: dist
-
-      - name: Verify tag matches module version
-        run: |
-          version=$(sed -n 's/^version=//p' module.prop)
-          test "${GITHUB_REF_NAME}" = "v${version}"
-
-      - name: Require immutable-release configuration before creating a draft
-        env:
-          GH_TOKEN: ${{ secrets.SOURCE_RELEASE_READ_TOKEN }}
-          IMMUTABILITY_CONFIRMED: ${{ vars.SOURCE_IMMUTABILITY_CONFIRMED }}
-        run: |
-          if [ -n "$GH_TOKEN" ]; then
-            test "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" = true
-          else
-            # GITHUB_TOKEN has no administration read permission for this setting.
-            test "$IMMUTABILITY_CONFIRMED" = true
-          fi
-
-      - name: Stage and verify GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          flags=()
-          case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease --latest=false) ;; esac
-          gh release create "${GITHUB_REF_NAME}" dist/*.zip \
-            --verify-tag --draft "${flags[@]}" \
-            --title "KernelSU-Tailscaled ${GITHUB_REF_NAME}" \
-            --notes-file CHANGELOG.txt
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" > draft.json
-          python - <<'PY'
-          import hashlib, json
-          from pathlib import Path
-          release = json.loads(Path('draft.json').read_text())
-          files = {p.name: p for p in Path('dist').glob('*.zip')}
-          assert release['draft'] is True
-          assert {a['name'] for a in release['assets']} == files.keys()
-          assert len(release['assets']) == len(files)
-          for asset in release['assets']:
-              assert asset['content_type'] in ('application/zip', 'application/x-zip-compressed')
-              assert asset['digest'] == 'sha256:' + hashlib.sha256(files[asset['name']].read_bytes()).hexdigest()
-          PY
-          gh release edit "$GITHUB_REF_NAME" --draft=false
-          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" --jq .immutable)" = true
-          for archive in dist/*.zip; do gh release verify-asset "$GITHUB_REF_NAME" "$archive"; done
+      actions: read

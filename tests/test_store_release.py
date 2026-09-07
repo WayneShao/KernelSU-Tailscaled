@@ -82,6 +82,8 @@ class StoreReleaseTests(unittest.TestCase):
             return {"default_branch": "main"}
         if endpoint.endswith("/commits/main"):
             return {"sha": "a" * 40}
+        if "/releases/tags/" in endpoint:
+            raise RuntimeError("Draft releases are not resolved by the public tag endpoint")
         release = copy.deepcopy(self.release)
         release["draft"] = not self.published
         release["immutable"] = self.published
@@ -99,12 +101,12 @@ class StoreReleaseTests(unittest.TestCase):
             commands.append(arguments)
             if arguments[:2] == ("release", "edit"):
                 self.published = True
-            return ""
+            return "42" if arguments[:2] == ("release", "view") else ""
 
         with patch.object(self.store, "api", side_effect=self.api_response), patch.object(self.store, "gh", side_effect=gh):
             result = self.store.publish(self.path, "v2.0.0", self.store.STORE_REPO)
         self.assertIn("/releases/tag/v2.0.0", result)
-        self.assertEqual([("release", "create"), ("release", "edit")], [args[:2] for args in commands])
+        self.assertEqual([("release", "create"), ("release", "view"), ("release", "edit")], [args[:2] for args in commands])
         self.assertIn("--draft", commands[0])
         self.assertEqual(1, commands[0].count(str(self.path)))
         self.assertFalse(any("--clobber" in args for args in commands))
@@ -112,11 +114,12 @@ class StoreReleaseTests(unittest.TestCase):
     def test_bad_upload_stays_draft(self):
         self.published = False
         self.bad_upload = True
-        with patch.object(self.store, "api", side_effect=self.api_response), patch.object(self.store, "gh") as command:
+        with patch.object(self.store, "api", side_effect=self.api_response), patch.object(self.store, "gh", return_value="42") as command:
             with self.assertRaisesRegex(ValueError, "digest"):
                 self.store.publish(self.path, "v2.0.0", self.store.STORE_REPO)
-        self.assertEqual(1, command.call_count)
-        self.assertEqual(("release", "create"), command.call_args.args[:2])
+        self.assertEqual(2, command.call_count)
+        self.assertEqual(("release", "create"), command.call_args_list[0].args[:2])
+        self.assertFalse(any(call.args[:2] == ("release", "edit") for call in command.call_args_list))
 
     def test_immutable_setting_failure_prevents_all_release_writes(self):
         def response(endpoint):

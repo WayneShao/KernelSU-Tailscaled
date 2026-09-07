@@ -98,7 +98,11 @@ def publish(archive: Path, tag: str, destination: str) -> str:
     # A failed upload remains a draft for inspection. Never replace tags or assets.
     gh("release", "create", tag, str(archive), "--repo", destination, "--draft",
        "--target", commit, "--title", f"KernelSU-Tailscaled {tag}", "--notes", notes)
-    endpoint = f"repos/{destination}/releases/tags/{quote(tag, safe='')}"
+    release_id = gh("release", "view", tag, "--repo", destination,
+                    "--json", "databaseId", "--jq", ".databaseId").strip()
+    if not release_id.isdecimal():
+        raise ValueError("Invalid draft release ID")
+    endpoint = f"repos/{destination}/releases/{release_id}"
     verify_uploaded(api(endpoint), archive, published=False)
     gh("release", "edit", tag, "--repo", destination, "--draft=false", "--latest")
     final = api(endpoint)

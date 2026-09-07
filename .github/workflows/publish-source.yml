@@ -1,0 +1,118 @@
+name: Publish Verified Source Release
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      build_run_id:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing v2 tag to publish
+        required: true
+        type: string
+      build_run_id:
+        description: Run containing a successful build job and verified packages
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: source-publication-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      startsWith(inputs.tag, 'v2.') &&
+      (contains(inputs.tag, '-') || vars.STABLE_RELEASE_APPROVED == 'true')
+    runs-on: ubuntu-latest
+    environment: source-release
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      BUILD_RUN_ID: ${{ inputs.build_run_id }}
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+
+      - name: Verify build provenance and version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          case "$BUILD_RUN_ID" in ''|*[!0-9]*) exit 1 ;; esac
+          test "$RELEASE_TAG" = "v$(sed -n 's/^version=//p' module.prop)"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID" > build-run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID/jobs?per_page=100" > build-jobs.json
+          python - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          run = json.loads(Path('build-run.json').read_text())
+          jobs = json.loads(Path('build-jobs.json').read_text())['jobs']
+          assert run['head_sha'] == subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          assert run['repository']['full_name'] == os.environ['GITHUB_REPOSITORY']
+          assert run['path'] == '.github/workflows/release.yml'
+          assert any(job['name'] == 'build' and job['conclusion'] == 'success' for job in jobs)
+          PY
+
+      - name: Download verified packages
+        uses: actions/download-artifact@v8
+        with:
+          name: KernelSU-Tailscaled-packages
+          path: dist
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Require immutable-release configuration
+        env:
+          GH_TOKEN: ${{ secrets.SOURCE_RELEASE_READ_TOKEN }}
+          IMMUTABILITY_CONFIRMED: ${{ vars.SOURCE_IMMUTABILITY_CONFIRMED }}
+        run: |
+          if [ -n "$GH_TOKEN" ]; then
+            test "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" = true
+          else
+            test "$IMMUTABILITY_CONFIRMED" = true
+          fi
+
+      - name: Publish or resume the verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! release_id=$(gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json databaseId --jq .databaseId); then
+            flags=()
+            case "$RELEASE_TAG" in *-*) flags+=(--prerelease --latest=false) ;; esac
+            gh release create "$RELEASE_TAG" dist/*.zip -R "$GITHUB_REPOSITORY" \
+              --verify-tag --draft "${flags[@]}" \
+              --title "KernelSU-Tailscaled $RELEASE_TAG" --notes-file CHANGELOG.txt
+            release_id=$(gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json databaseId --jq .databaseId)
+          fi
+          case "$release_id" in ''|*[!0-9]*) exit 1 ;; esac
+          endpoint="repos/$GITHUB_REPOSITORY/releases/$release_id"
+          gh api "$endpoint" > release.json
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          release = json.loads(Path('release.json').read_text())
+          files = {p.name: p for p in Path('dist').glob('*.zip')}
+          assert release['tag_name'] == os.environ['RELEASE_TAG']
+          assert files and {a['name'] for a in release['assets']} == files.keys()
+          assert len(release['assets']) == len(files)
+          for asset in release['assets']:
+              assert asset['content_type'] in ('application/zip', 'application/x-zip-compressed')
+              assert asset['digest'] == 'sha256:' + hashlib.sha256(files[asset['name']].read_bytes()).hexdigest()
+          PY
+          if [ "$(gh api "$endpoint" --jq .draft)" = true ]; then
+            gh release edit "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --draft=false
+          fi
+          test "$(gh api "$endpoint" --jq .immutable)" = true
+          for archive in dist/*.zip; do
+            gh release verify-asset "$RELEASE_TAG" "$archive" -R "$GITHUB_REPOSITORY"
+          done

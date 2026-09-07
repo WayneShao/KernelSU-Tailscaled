@@ -149,6 +149,11 @@ preflight instead. This configuration acknowledgement does not replace the
 post-publication check: the workflow fails unless the actual release is immutable
 and all assets pass GitHub's release attestation verification.
 
+Tag builds call `publish-source.yml`. Its manual entry can resume publication
+using the original tag and build run ID without rebuilding packages or moving
+the tag. It verifies the successful build's commit and all existing draft assets
+before publishing; already published immutable assets are verified, not replaced.
+
 The official store submission and distribution requirements are documented in
 [the research record](docs/research/2026-09-07-kernelsu-store-requirements.md).
 Submission requires manual review and is not performed by the build workflow.
