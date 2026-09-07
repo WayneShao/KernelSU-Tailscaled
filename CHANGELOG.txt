@@ -1,5 +1,9 @@
 v2.0.0-beta.5 (prerelease)
 
+Published 2026-09-07. Immutable Release:
+https://github.com/WayneShao/KernelSU-Tailscaled/releases/tag/v2.0.0-beta.5
+Full release log: docs/releases/v2.0.0-beta.5.md
+
 - Renamed the source project to KernelSU-Tailscaled and adopted the independent
   kernelsu-tailscaled module ID. The legacy v1 update feed is preserved.
 - Isolated persistent state and complete runtime generations from manager files.

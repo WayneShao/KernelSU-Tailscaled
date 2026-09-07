@@ -1,8 +1,10 @@
 # KernelSU Store Research and Redesign Constraints
 
-Checked: 2026-09-07. Status: research complete; runtime design awaiting approval.
+Checked: 2026-09-07. Historical snapshot from the research stage, before approval.
 Source repository: https://github.com/WayneShao/KernelSU-Tailscaled
-No store submission, device update, tag change, or new release was performed.
+No deployment or publication was performed during that research stage. Later
+authorized implementation and delivery are recorded in
+[the beta.5 verification record](../verification/2026-09-07-beta.5.md).
 
 ## Authoritative Sources
 

@@ -16,7 +16,8 @@ control, isolated login state, and a complete ZIP installer with hot activation.
 - Candidate: `2.0.0-beta.5` (prerelease)
 - Source release: https://github.com/WayneShao/KernelSU-Tailscaled/releases/tag/v2.0.0-beta.5
 - Universal ARM/ARM64 ZIP: https://github.com/WayneShao/KernelSU-Tailscaled/releases/download/v2.0.0-beta.5/KernelSU-Tailscaled-v2.0.0-beta.5.zip
-- CI: https://github.com/WayneShao/KernelSU-Tailscaled/actions/runs/34106297847
+- Build job: https://github.com/WayneShao/KernelSU-Tailscaled/actions/runs/34106297847/job/101691983943
+- Publication workflow: https://github.com/WayneShao/KernelSU-Tailscaled/actions/runs/34107166975
 - Verification record: https://github.com/WayneShao/KernelSU-Tailscaled/blob/main/docs/verification/2026-09-07-beta.5.md
 
 The same ARM64 ZIP was installed through ksud on PKX110 and nezha, with runtime

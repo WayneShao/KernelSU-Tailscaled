@@ -1,5 +1,12 @@
 # KernelSU-Tailscaled Implementation Plan
 
+Delivery record, 2026-09-07: implementation committed and pushed; the same complete
+beta.5 ZIP installed and activated on both phones; CI packages and immutable
+source Release published. Store submission #80 is awaiting manual review.
+The sequence below is the original implementation plan. Actual verification and
+remaining physical WebUI, compatibility, soak, and store-approval limits are in
+`docs/verification/2026-09-07-beta.5.md`; those limits are not marked as passed.
+
 > For agentic workers: use superpowers:subagent-driven-development for bounded
 > components and independent review; primary agent owns integration and verification.
 
