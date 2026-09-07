@@ -1,0 +1,44 @@
+name: Publish Approved KernelSU Store Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Previously verified immutable stable source release (v2.x.y)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kernelsu-store-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: vars.STORE_PUBLICATION_ENABLED == 'true'
+    environment: kernelsu-store
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Download one verified source universal ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v2\.[0-9]+\.[0-9]+$ ]]
+          gh release download "$RELEASE_TAG" --repo WayneShao/KernelSU-Tailscaled \
+            --pattern "KernelSU-Tailscaled-${RELEASE_TAG}.zip" --dir dist
+      - name: Validate and publish to approved distribution repository
+        env:
+          GH_TOKEN: ${{ secrets.KERNELSU_STORE_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          test -n "$GH_TOKEN"
+          python scripts/store-release.py \
+            --zip "dist/KernelSU-Tailscaled-${RELEASE_TAG}.zip" --tag "$RELEASE_TAG" \
+            --destination KernelSU-Modules-Repo/kernelsu-tailscaled --publish

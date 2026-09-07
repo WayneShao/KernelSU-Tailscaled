@@ -1,4 +1,12 @@
-export type ComponentState = "running" | "stopped";
+export type ComponentState = "running" | "stopped" | "unknown";
+const LIFECYCLES = ["disabled", "stopped", "starting", "running", "degraded", "failed", "migration-required"] as const;
+export type Lifecycle = typeof LIFECYCLES[number];
+
+export interface Diagnostic {
+  code: string;
+  severity: "info" | "warning" | "error";
+  message: string;
+}
 
 export interface RuntimeComponents {
   supervisor: ComponentState;
@@ -8,8 +16,11 @@ export interface RuntimeComponents {
 }
 
 export interface RuntimeStatus {
+  schemaVersion: 2;
   enabled: boolean;
+  lifecycle: Lifecycle;
   mode: "native" | "userspace";
+  panelURL: string;
   hostname: string | null;
   backendState: string;
   ipv4: string | null;
@@ -19,6 +30,9 @@ export interface RuntimeStatus {
   moduleVersion: string;
   tailscaleVersion: string;
   components: RuntimeComponents;
+  runtime: { activeVersion: string | null; stagedVersion: string | null; previousVersion: string | null };
+  diagnostics: Diagnostic[];
+  health: string[];
 }
 
 type JsonObject = Record<string, unknown>;
@@ -36,18 +50,41 @@ function requireString(object: JsonObject, key: string): string {
 }
 
 function requireComponent(value: unknown): ComponentState {
-  if (value !== "running" && value !== "stopped") {
+  if (value !== "running" && value !== "stopped" && value !== "unknown") {
     throw new Error("Invalid runtime status");
   }
+  return value;
+}
+
+function nullableString(value: unknown): string | null {
+  if (value !== null && typeof value !== "string") throw new Error("Invalid runtime status");
+  return value;
+}
+
+function stringList(value: unknown): string[] {
+  if (value === null || value === undefined) return [];
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) throw new Error("Invalid runtime status");
   return value;
 }
 
 export function parseRuntimeStatus(input: string): RuntimeStatus {
   try {
     const raw: unknown = JSON.parse(input);
-    if (!isObject(raw) || typeof raw.enabled !== "boolean" || !isObject(raw.components)) {
+    if (!isObject(raw) || raw.schemaVersion !== 2 || typeof raw.enabled !== "boolean" || !isObject(raw.components) || !isObject(raw.runtime)) {
       throw new Error("Invalid runtime status");
     }
+
+    if (!LIFECYCLES.includes(raw.lifecycle as Lifecycle) || !Array.isArray(raw.diagnostics)) throw new Error("Invalid runtime status");
+    const lifecycle = raw.lifecycle as Lifecycle;
+    const diagnostics: Diagnostic[] = raw.diagnostics.map((item: unknown) => {
+      if (!isObject(item) || !["info", "warning", "error"].includes(String(item.severity))) throw new Error("Invalid runtime status");
+      return { code: requireString(item, "code"), severity: item.severity as Diagnostic["severity"], message: requireString(item, "message") };
+    });
+    const runtime = {
+      activeVersion: nullableString(raw.runtime.activeVersion),
+      stagedVersion: nullableString(raw.runtime.stagedVersion),
+      previousVersion: nullableString(raw.runtime.previousVersion),
+    };
 
     const mode = raw.mode;
     if (mode !== "native" && mode !== "userspace") {
@@ -64,12 +101,14 @@ export function parseRuntimeStatus(input: string): RuntimeStatus {
     let backendState = raw.enabled ? "Unknown" : "Stopped";
     let hostname: string | null = null;
     let ipv4: string | null = null;
+    let health: string[] = [];
     if (raw.tailscale !== null) {
       if (!isObject(raw.tailscale)) {
         throw new Error("Invalid runtime status");
       }
       backendState = requireString(raw.tailscale, "BackendState");
-      if (raw.tailscale.Self !== null) {
+      health = stringList(raw.tailscale.Health);
+      if (raw.tailscale.Self !== null && raw.tailscale.Self !== undefined) {
         if (!isObject(raw.tailscale.Self)) {
           throw new Error("Invalid runtime status");
         }
@@ -78,15 +117,10 @@ export function parseRuntimeStatus(input: string): RuntimeStatus {
         if (dnsNameValue !== undefined && typeof dnsNameValue !== "string") {
           throw new Error("Invalid runtime status");
         }
-        const ips = raw.tailscale.Self.TailscaleIPs;
-        if (ips !== null && (!Array.isArray(ips) || !ips.every((value) => typeof value === "string"))) {
-          throw new Error("Invalid runtime status");
-        }
-        if (Array.isArray(ips)) {
-          const dnsLabel = dnsNameValue?.replace(/\.$/, "").split(".")[0] ?? "";
-          hostname = dnsLabel || hostName || null;
-          ipv4 = ips.find((value) => /^\d{1,3}(?:\.\d{1,3}){3}$/.test(value)) ?? null;
-        }
+        const ips = stringList(raw.tailscale.Self.TailscaleIPs);
+        const dnsLabel = dnsNameValue?.replace(/\.$/, "").split(".")[0] ?? "";
+        hostname = dnsLabel || hostName || null;
+        ipv4 = ips.find((value) => /^\d{1,3}(?:\.\d{1,3}){3}$/.test(value)) ?? null;
       }
     }
 
@@ -106,9 +140,16 @@ export function parseRuntimeStatus(input: string): RuntimeStatus {
       exitNode = exitNodeID || null;
     }
 
+    const webListen = raw.webListen ?? "127.0.0.1:8088";
+    if (typeof webListen !== "string" || !/^127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(webListen) || Number(webListen.split(":")[1]) > 65535) {
+      throw new Error("Invalid runtime status");
+    }
     return {
+      schemaVersion: 2,
       enabled: raw.enabled,
+      lifecycle,
       mode,
+      panelURL: `http://${webListen}/`,
       hostname,
       backendState,
       ipv4,
@@ -118,6 +159,9 @@ export function parseRuntimeStatus(input: string): RuntimeStatus {
       moduleVersion: requireString(raw, "moduleVersion"),
       tailscaleVersion: requireString(raw, "tailscaleVersion"),
       components,
+      runtime,
+      diagnostics,
+      health,
     };
   } catch {
     throw new Error("Invalid runtime status");

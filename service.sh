@@ -7,4 +7,4 @@ while [ "$(getprop sys.boot_completed)" != "1" ]; do
 done
 sleep 3
 [ -f "$MODDIR/disable" ] && exit 0
-"$MODDIR/tailscale/scripts/tailscale-service" start
+sh "$MODDIR/control.sh" boot

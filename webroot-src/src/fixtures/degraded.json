@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2,
+  "enabled": true,
+  "mode": "native",
+  "lifecycle": "degraded",
+  "moduleVersion": "2.0.0-beta.1",
+  "tailscaleVersion": "1.102.3",
+  "components": {"supervisor":"running","daemon":"running","dataPlane":"unknown","web":"stopped"},
+  "runtime": {"activeVersion":"2.0.0-beta.1","stagedVersion":"2.0.0-beta.2","previousVersion":"2.0.0-alpha.1"},
+  "diagnostics": [
+    {"code":"native-route-timeout","severity":"warning","message":"Peer route inspection exceeded its time budget"},
+    {"code":"upstream-health","severity":"warning","message":"Tailscale reports health warnings; see tailscale.Health"},
+    {"code":"dns-accepted","severity":"warning","message":"Effective preferences accept Tailscale DNS settings"},
+    {"code":"routes-accepted","severity":"warning","message":"Effective preferences accept advertised subnet routes"},
+    {"code":"exit-node-configured","severity":"warning","message":"Effective preferences select an exit node"},
+    {"code":"web-unavailable","severity":"warning","message":"Official loopback web panel is not ready"}
+  ],
+  "tailscale": {"BackendState":"Running","Self":{"HostName":"android","DNSName":"phone-lab.tail123.ts.net.","TailscaleIPs":["100.64.10.20"]},"Health":["DNS server is unreachable"]},
+  "prefs": {"RouteAll":true,"CorpDNS":true,"ExitNodeID":"exit-node-id"}
+}

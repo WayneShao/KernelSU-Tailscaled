@@ -1,4 +1,9 @@
-import type { ComponentState, RuntimeStatus } from "./model";
+import type { ComponentState, Lifecycle, RuntimeStatus } from "./model";
+
+const lifecycleLabels: Record<Lifecycle, string> = {
+  disabled: "已禁用", stopped: "已停止", starting: "启动中", running: "运行中",
+  degraded: "降级", failed: "失败", "migration-required": "待迁移",
+};
 
 function appendText(parent: HTMLElement, tagName: keyof HTMLElementTagNameMap, text: string, className?: string): HTMLElement {
   const element = document.createElement(tagName);
@@ -30,7 +35,7 @@ function addComponent(parent: HTMLElement, label: string, state: ComponentState)
   row.className = "component-row";
   row.dataset.state = state;
   appendText(row, "span", label);
-  appendText(row, "span", state === "running" ? "运行中" : "已停止", "component-value");
+  appendText(row, "span", state === "running" ? "运行中" : state === "stopped" ? "已停止" : "未知", "component-value");
   parent.append(row);
 }
 
@@ -45,16 +50,24 @@ function addButton(parent: HTMLElement, action: string, label: string, title: st
     "refresh-logs": "refresh-cw",
     back: "arrow-left",
     "open-panel": "external-link",
+    diagnostics: "stethoscope",
+    "refresh-diagnostics": "refresh-cw",
+    "migration-status": "list-checks",
+    "migrate-legacy": "import",
+    "apply-staged": "package-check",
   };
   const button = document.createElement("button");
   button.type = "button";
   button.dataset.action = action;
   button.title = title;
+  button.setAttribute("aria-label", title);
   const icon = document.createElement("i");
   icon.setAttribute("data-lucide", icons[action] ?? "circle");
   icon.setAttribute("aria-hidden", "true");
   button.append(icon);
-  appendText(button, "span", label);
+  const iconOnly = ["refresh", "copy-ip", "restart", "refresh-logs", "refresh-diagnostics"].includes(action);
+  if (iconOnly) button.className = "icon-button";
+  appendText(button, "span", label, iconOnly ? "visually-hidden" : undefined);
   parent.append(button);
   return button;
 }
@@ -63,24 +76,48 @@ export function renderDashboard(root: HTMLElement, status: RuntimeStatus): void 
   root.replaceChildren();
 
   const header = document.createElement("header");
-  appendText(header, "p", "TAILSCALE", "eyebrow");
-  appendText(header, "h1", valueOrDash(status.hostname));
-  const state = appendText(header, "p", status.enabled ? status.backendState : "已禁用", "backend-state");
-  state.dataset.connected = String(status.backendState === "Running");
+  appendText(header, "h1", "KernelSU-Tailscaled");
+  appendText(header, "p", status.hostname ?? "设备名称未知", "device-name");
+  const state = appendText(header, "p", `${lifecycleLabels[status.lifecycle]} · ${status.backendState}`, "backend-state");
+  state.dataset.lifecycle = status.lifecycle;
   root.append(header);
 
   const actions = document.createElement("nav");
   actions.className = "primary-actions";
   actions.setAttribute("aria-label", "模块操作");
-  addButton(actions, status.enabled ? "disable" : "enable", status.enabled ? "禁用" : "启用", status.enabled ? "禁用 Tailscale" : "启用 Tailscale");
+  const migrationRequired = status.lifecycle === "migration-required" || status.diagnostics.some((item) => item.code === "migration-required");
+  const awaitingEnable = status.diagnostics.some((item) => item.code === "migration-awaiting-enable");
+  const enable = !status.enabled || awaitingEnable;
+  if (!migrationRequired) addButton(actions, enable ? "enable" : "disable", enable ? "启用" : "禁用", enable ? "启用 Tailscale" : "禁用 Tailscale");
   addButton(actions, "refresh", "刷新", "刷新状态");
   addButton(actions, "copy-ip", "复制 IP", "复制 Tailscale IPv4 地址").disabled = status.ipv4 === null;
-  addButton(actions, "restart", "重启服务", "重启 Tailscale 模块服务").disabled = !status.enabled;
+  addButton(actions, "restart", "重启服务", "重启 Tailscale 模块服务").disabled = !status.enabled || migrationRequired || awaitingEnable;
   root.append(actions);
+
+  if (migrationRequired || status.diagnostics.length > 0 || status.health.length > 0) {
+    const warnings = document.createElement("section");
+    warnings.className = "diagnostics";
+    appendText(warnings, "h2", "诊断");
+    for (const diagnostic of status.diagnostics) {
+      const item = document.createElement("div");
+      item.className = "diagnostic";
+      item.dataset.severity = diagnostic.severity;
+      appendText(item, "span", diagnostic.code, "diagnostic-code");
+      appendText(item, "p", diagnostic.message);
+      warnings.append(item);
+    }
+    for (const message of status.health) {
+      const item = appendText(warnings, "p", message, "upstream-health");
+      item.dataset.severity = "warning";
+    }
+    if (migrationRequired) addButton(warnings, "migrate-legacy", "迁移旧身份", "迁移旧模块身份");
+    root.append(warnings);
+  }
 
   const network = document.createElement("section");
   appendText(network, "h2", "网络");
   const facts = document.createElement("dl");
+  addFact(facts, "模块启用意图", status.enabled ? "已启用" : "已禁用");
   addFact(facts, "Tailscale IPv4", valueOrDash(status.ipv4));
   addFact(facts, "运行模式", status.mode === "native" ? "Native TUN" : "Userspace");
   addFact(facts, "接受路由", preference(status.acceptRoutes));
@@ -105,29 +142,35 @@ export function renderDashboard(root: HTMLElement, status: RuntimeStatus): void 
   const versionFacts = document.createElement("dl");
   addFact(versionFacts, "模块", status.moduleVersion);
   addFact(versionFacts, "Tailscale", status.tailscaleVersion);
+  addFact(versionFacts, "活动运行时", status.runtime.activeVersion ?? "未知");
+  addFact(versionFacts, "待应用运行时", status.runtime.stagedVersion ?? "无");
+  addFact(versionFacts, "上一运行时", status.runtime.previousVersion ?? "无");
   versions.append(versionFacts);
+  if (status.runtime.stagedVersion) addButton(versions, "apply-staged", "应用暂存运行时", "应用暂存运行时");
   root.append(versions);
 
   const secondary = document.createElement("nav");
   secondary.className = "secondary-actions";
   secondary.setAttribute("aria-label", "详情操作");
   addButton(secondary, "logs", "日志", "查看最近日志");
-  addButton(secondary, "open-panel", "打开完整面板", "打开 Tailscale 完整面板");
+  addButton(secondary, "diagnostics", "诊断记录", "查看诊断记录");
+  addButton(secondary, "migration-status", "迁移状态", "查看迁移状态");
+  addButton(secondary, "open-panel", "打开完整面板", "打开 Tailscale 完整面板").disabled = migrationRequired || awaitingEnable || !status.enabled;
   root.append(secondary);
 }
 
-export function renderLogs(root: HTMLElement, logs: string): void {
+export function renderLogs(root: HTMLElement, logs: string, kind: "logs" | "diagnostics" = "logs"): void {
   root.replaceChildren();
   const header = document.createElement("header");
-  appendText(header, "p", "TAILSCALE", "eyebrow");
-  appendText(header, "h1", "运行日志");
+  appendText(header, "p", "KernelSU-Tailscaled", "eyebrow");
+  appendText(header, "h1", kind === "logs" ? "运行日志" : "诊断记录");
   root.append(header);
   const pre = document.createElement("pre");
   pre.textContent = logs || "暂无日志";
   root.append(pre);
   const actions = document.createElement("nav");
   actions.className = "secondary-actions";
-  addButton(actions, "refresh-logs", "刷新", "刷新日志");
+  addButton(actions, kind === "logs" ? "refresh-logs" : "refresh-diagnostics", "刷新", "刷新记录");
   addButton(actions, "back", "返回", "返回状态页");
   root.append(actions);
 }
@@ -135,12 +178,13 @@ export function renderLogs(root: HTMLElement, logs: string): void {
 export function renderMessage(root: HTMLElement, title: string, message: string, retryAction = "refresh"): void {
   root.replaceChildren();
   const header = document.createElement("header");
-  appendText(header, "p", "TAILSCALE", "eyebrow");
+  appendText(header, "p", "KernelSU-Tailscaled", "eyebrow");
   appendText(header, "h1", title);
   root.append(header);
   appendText(root, "p", message, "message");
   const actions = document.createElement("nav");
   actions.className = "secondary-actions";
   addButton(actions, retryAction, "重试", "重试当前操作");
+  if (retryAction !== "refresh") addButton(actions, "back", "返回", "返回状态页");
   root.append(actions);
 }

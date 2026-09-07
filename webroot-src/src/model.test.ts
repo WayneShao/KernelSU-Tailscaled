@@ -2,9 +2,16 @@ import { describe, expect, it } from "vitest";
 import needsLogin from "./fixtures/needs-login.json";
 import running from "./fixtures/running.json";
 import stopped from "./fixtures/stopped.json";
+import degraded from "./fixtures/degraded.json";
+import migration from "./fixtures/migration-required.json";
 import { parseRuntimeStatus } from "./model";
 
 describe("parseRuntimeStatus", () => {
+  it("uses a validated custom loopback panel endpoint", () => {
+    expect(parseRuntimeStatus(JSON.stringify({ ...running, webListen: "127.0.0.1:9099" })).panelURL).toBe("http://127.0.0.1:9099/");
+    expect(() => parseRuntimeStatus(JSON.stringify({ ...running, webListen: "example.com:8088" }))).toThrow();
+    expect(() => parseRuntimeStatus(JSON.stringify({ ...running, webListen: "127.0.0.1:99999" }))).toThrow();
+  });
   it("maps a connected native runtime", () => {
     const model = parseRuntimeStatus(JSON.stringify(running));
 
@@ -17,7 +24,9 @@ describe("parseRuntimeStatus", () => {
       acceptRoutes: false,
       acceptDNS: false,
       exitNode: null,
-      moduleVersion: "1.102.3.1",
+      schemaVersion: 2,
+      lifecycle: "running",
+      moduleVersion: "2.0.0-beta.1",
       tailscaleVersion: "1.102.3",
     });
   });
@@ -56,10 +65,37 @@ describe("parseRuntimeStatus", () => {
 
   it("rejects invalid component states", () => {
     const invalid = structuredClone(running);
-    invalid.components.web = "unknown";
+    invalid.components.web = "unhealthy";
 
     expect(() => parseRuntimeStatus(JSON.stringify(invalid))).toThrow(
       "Invalid runtime status",
     );
+  });
+  it("preserves lifecycle, unknown health, diagnostics and effective preferences", () => {
+    expect(parseRuntimeStatus(JSON.stringify(degraded))).toMatchObject({
+      lifecycle: "degraded", backendState: "Running", health: ["DNS server is unreachable"],
+      components: { dataPlane: "unknown", web: "stopped" }, acceptRoutes: true,
+      acceptDNS: true, exitNode: "exit-node-id", runtime: degraded.runtime, diagnostics: degraded.diagnostics,
+    });
+  });
+
+  it("keeps migration intent distinct from running and permits absent runtime metadata", () => {
+    expect(parseRuntimeStatus(JSON.stringify(migration))).toMatchObject({
+      enabled: true, lifecycle: "migration-required", backendState: "Unknown",
+      runtime: { activeVersion: null }, hostname: null,
+    });
+  });
+
+  it("retains the admin name even when IPs are null", () => {
+    const data = { ...running, tailscale: { ...running.tailscale, Self: { ...running.tailscale.Self, TailscaleIPs: null } } };
+    expect(parseRuntimeStatus(JSON.stringify(data)).hostname).toBe("pkx110");
+  });
+
+  it.each([
+    { schemaVersion: 1 }, { lifecycle: "fictional" }, { runtime: {} },
+    { diagnostics: [{ code: "x", severity: "fatal", message: "bad" }] },
+    { tailscale: { BackendState: "Running", Health: [42] } },
+  ])("rejects malformed schema fields: %j", (change) => {
+    expect(() => parseRuntimeStatus(JSON.stringify({ ...running, ...change }))).toThrow("Invalid runtime status");
   });
 });

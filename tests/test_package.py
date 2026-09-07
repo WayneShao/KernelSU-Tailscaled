@@ -22,17 +22,39 @@ def with_manifest(entries: dict[str, bytes]) -> dict[str, bytes]:
     return result
 
 
+def with_bundles(entries: dict[str, bytes]) -> dict[str, bytes]:
+    result = {name: data for name, data in entries.items() if not name.startswith("files/bundle-") and name != "files/manifest.sha256"}
+    for arch in ("arm", "arm64"):
+        if f"files/tailscale-{arch}" not in result:
+            continue
+        installed = {name: data for name, data in result.items() if not name.startswith(("META-INF/", "files/")) and name != "customize.sh"}
+        installed["engine-version"] = result["files/VERSION.txt"]
+        for binary in ("tailscale", "tailscaled"):
+            installed[f"bin/{binary}"] = result[f"files/{binary}-{arch}"]
+        result[f"files/bundle-{arch}.sha256"] = "".join(
+            f"{hashlib.sha256(installed[name]).hexdigest()}  {name}\n" for name in sorted(installed)
+        ).encode()
+    return with_manifest(result)
+
+
 def good_entries() -> dict[str, bytes]:
-    return with_manifest(
+    return with_bundles(
         {
             "module.prop": (
-                b"id=magisk-tailscaled\n"
-                b"name=Magisk Tailscaled\n"
+                b"id=kernelsu-tailscaled\n"
+                b"name=KernelSU-Tailscaled\n"
                 b"version=1.102.3.1\n"
                 b"versionCode=011020301\n"
                 b"author=test\n"
                 b"description=test fixture\n"
             ),
+            "module.json": b'{"metamodule":false}\n',
+            "control.sh": b"#!/system/bin/sh\nexit 0\n",
+            "scripts/bundle-lib.sh": b"#!/system/bin/sh\nexit 0\n",
+            "scripts/runtime-control.sh": b"#!/system/bin/sh\nexit 0\n",
+            "scripts/install-runtime.sh": b"#!/system/bin/sh\nexit 0\n",
+            "scripts/activate-runtime.sh": b"#!/system/bin/sh\nexit 0\n",
+            "scripts/migrate-legacy.sh": b"#!/system/bin/sh\nexit 0\n",
             "customize.sh": b"#!/system/bin/sh\nexit 0\n",
             "META-INF/com/google/android/update-binary": b"#!/system/bin/sh\nexit 0\n",
             "META-INF/com/google/android/updater-script": b"#MAGISK\n",
@@ -64,7 +86,7 @@ def write_zip(path: Path, entries: dict[str, bytes]) -> None:
         for name, content in entries.items():
             info = zipfile.ZipInfo(name)
             info.create_system = 3
-            mode = 0o755 if name in executable or name.startswith("files/tailscale") else 0o644
+            mode = 0o755 if name in executable or name == "control.sh" or name.startswith("scripts/") or name.startswith("files/tailscale") else 0o644
             info.external_attr = (0o100000 | mode) << 16
             archive.writestr(info, content)
 
@@ -75,7 +97,7 @@ def entries_for_arch(arch: str) -> dict[str, bytes]:
     entries.pop(f"files/tailscale-{other}")
     entries.pop(f"files/tailscaled-{other}")
     entries.pop("files/manifest.sha256")
-    return with_manifest(entries)
+    return with_bundles(entries)
 
 
 class PackageVerifierTests(unittest.TestCase):
@@ -163,7 +185,7 @@ class PackageVerifierTests(unittest.TestCase):
     def test_rejects_invalid_module_id(self) -> None:
         entries = good_entries()
         entries["module.prop"] = entries["module.prop"].replace(
-            b"id=magisk-tailscaled", b"id=wrong-module"
+            b"id=kernelsu-tailscaled", b"id=wrong-module"
         )
         self.assert_rejected(entries, "unexpected module id")
 
@@ -212,6 +234,21 @@ class PackageVerifierTests(unittest.TestCase):
         entries = good_entries()
         entries["files/tailscale-arm64"] = b"modified"
         self.assert_rejected(entries, "SHA-256 mismatch: files/tailscale-arm64")
+
+    def test_rejects_changed_installed_script(self) -> None:
+        entries = good_entries()
+        entries["control.sh"] += b"# changed\n"
+        self.assert_rejected(entries, "installed bundle manifest mismatch: arm")
+
+    def test_rejects_missing_engine_version(self) -> None:
+        entries = good_entries()
+        entries.pop("files/VERSION.txt")
+        self.assert_rejected(entries, "missing required entry: files/VERSION.txt")
+
+    def test_rejects_dot_path(self) -> None:
+        entries = good_entries()
+        entries["."] = b"bad"
+        self.assert_rejected(entries, "unsafe ZIP path")
 
     def test_rejects_full_package_missing_architecture(self) -> None:
         self.assert_rejected(

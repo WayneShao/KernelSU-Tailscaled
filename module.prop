@@ -1,7 +1,7 @@
-id=magisk-tailscaled
-name=Magisk Tailscaled
-version=1.102.3.1
-versionCode=011020301
-author=ryukora, WayneShao
-description=Native Tailscale service with KernelSU WebUI and owned process supervision.
-updateJson=https://raw.githubusercontent.com/WayneShao/Magisk-Tailscaled/main/update.json
+id=kernelsu-tailscaled
+name=KernelSU-Tailscaled
+version=2.0.0-beta.5
+versionCode=20000005
+author=WayneShao; based on ryukora and ANASFANANI
+description=Independent Tailscale module with KernelSU WebUI, isolated state, and explicit migration. Beta.
+updateJson=https://raw.githubusercontent.com/WayneShao/KernelSU-Tailscaled/main/update-kernelsu.json

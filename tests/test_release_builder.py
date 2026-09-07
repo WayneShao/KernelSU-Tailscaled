@@ -15,7 +15,15 @@ VERIFIER = ROOT / "scripts" / "verify-package.py"
 class ReleaseBuilderTests(unittest.TestCase):
     def make_source(self, root: Path) -> None:
         files = {
-            "module.prop": b"id=magisk-tailscaled\nname=Magisk Tailscaled\nversion=1.2.3.4\nversionCode=01020304\nauthor=test\ndescription=test\n",
+            "module.prop": b"id=kernelsu-tailscaled\nname=KernelSU-Tailscaled\nversion=1.2.3.4\nversionCode=01020304\nauthor=test\ndescription=test\n",
+            "module.json": b'{"metamodule":false,"sourceUrl":"https://github.com/WayneShao/KernelSU-Tailscaled"}\n',
+            "update-kernelsu.json": b"{}\n",
+            "control.sh": b"#!/system/bin/sh\nexit 0\n",
+            "scripts/bundle-lib.sh": b"#!/system/bin/sh\nexit 0\n",
+            "scripts/runtime-control.sh": b"#!/system/bin/sh\nexit 0\n",
+            "scripts/install-runtime.sh": b"#!/system/bin/sh\nexit 0\n",
+            "scripts/activate-runtime.sh": b"#!/system/bin/sh\nexit 0\n",
+            "scripts/migrate-legacy.sh": b"#!/system/bin/sh\nexit 0\n",
             "customize.sh": b"#!/system/bin/sh\nexit 0\n",
             "service.sh": b"#!/system/bin/sh\nexit 0\n",
             "action.sh": b"#!/system/bin/sh\nexit 0\n",
@@ -75,9 +83,9 @@ class ReleaseBuilderTests(unittest.TestCase):
             self.assertEqual(0, first_result.returncode, first_result.stderr)
             self.assertEqual(0, second_result.returncode, second_result.stderr)
             expected = {
-                "Magisk-Tailscaled-v1.2.3.4.zip": "all",
-                "Magisk-Tailscaled-arm-v1.2.3.4.zip": "arm",
-                "Magisk-Tailscaled-arm64-v1.2.3.4.zip": "arm64",
+                "KernelSU-Tailscaled-v1.2.3.4.zip": "all",
+                "KernelSU-Tailscaled-arm-v1.2.3.4.zip": "arm",
+                "KernelSU-Tailscaled-arm64-v1.2.3.4.zip": "arm64",
             }
             self.assertEqual(expected.keys(), {path.name for path in first.glob("*.zip")})
             for name, arch in expected.items():
@@ -97,6 +105,14 @@ class ReleaseBuilderTests(unittest.TestCase):
                 with zipfile.ZipFile(first_zip) as archive:
                     names = set(archive.namelist())
                     self.assertIn("META-INF/com/google/android/update-binary", names)
+                    architectures = ('arm', 'arm64') if arch == 'all' else (arch,)
+                    for selected in architectures:
+                        manifest = dict(line.split('  ', 1)[::-1] for line in archive.read(f'files/bundle-{selected}.sha256').decode().splitlines())
+                        self.assertEqual(hashlib.sha256(archive.read(f'files/tailscale-{selected}')).hexdigest(), manifest['bin/tailscale'])
+                        self.assertIn('control.sh', manifest)
+                        self.assertIn('scripts/activate-runtime.sh', manifest)
+                        self.assertNotIn('bundle.sha256', manifest)
+                        self.assertEqual(hashlib.sha256(archive.read('module.prop')).hexdigest(), manifest['module.prop'])
                     update_binary_mode = (
                         archive.getinfo("META-INF/com/google/android/update-binary").external_attr >> 16
                     ) & 0o777

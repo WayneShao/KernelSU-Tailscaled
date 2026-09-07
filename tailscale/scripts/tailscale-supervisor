@@ -1,52 +1,71 @@
 #!/system/bin/sh
 SCRIPT_DIR=${0%/*}
 . "$SCRIPT_DIR/common.sh"
-load_config || exit 1
+ensure_dirs || exit 1
+exec 9>&-
+unset KST_LOCK_HELD
+exec 8>"$RUN_DIR/supervisor.lock" || exit 1
+flock_command -n 8 || exit 0
+# Component teardown belongs to the controller, including when it holds FD 9.
+trap 'exit 0' TERM INT HUP
+supervisor_owner=$$
 
-stop_components() {
-  "$WEB_SCRIPT" stop >/dev/null 2>&1 || true
-  "$TUNNEL_SCRIPT" stop >/dev/null 2>&1 || true
-  "$DAEMON_SCRIPT" stop >/dev/null 2>&1 || true
+reconcile() {
+  # A blocked subshell may outlive the supervisor stopped during an upgrade.
+  [ "$(read_pid "$SUPERVISOR_PID")" = "$supervisor_owner" ] && supervisor_health || return 10
+  if module_disabled || [ "$(sed -n '1p' "$RUN_DIR/wanted" 2>/dev/null)" != 1 ]; then
+    "$KST_SHELL" "$WEB_SCRIPT" stop 9>&9 || return 1
+    "$KST_SHELL" "$TUNNEL_SCRIPT" stop 9>&9 || return 1
+    "$KST_SHELL" "$DAEMON_SCRIPT" stop 9>&9 || return 1
+    return 10
+  fi
+  if ! load_config; then set_lifecycle failed; log ERROR "$CONFIG_ERROR"; return 1; fi
+  if ! daemon_running; then
+    "$KST_SHELL" "$WEB_SCRIPT" stop 9>&9 || return 1
+    "$KST_SHELL" "$TUNNEL_SCRIPT" stop 9>&9 || return 1
+    "$KST_SHELL" "$DAEMON_SCRIPT" stop 9>&9 || return 1
+    if ! "$KST_SHELL" "$DAEMON_SCRIPT" start 9>&9; then
+      set_lifecycle failed
+      return 1
+    fi
+    "$KST_SHELL" "$TUNNEL_SCRIPT" start 9>&9 || log WARN 'Userspace helper recovery failed'
+    "$KST_SHELL" "$WEB_SCRIPT" start 9>&9 || log WARN 'Official web panel recovery failed'
+    set_lifecycle running
+    return 0
+  fi
+  # API or native route failures are observable degradation, not process crashes.
+  if [ "$MODE" = userspace ] && ! owned_alive "$TUNNEL_PID" "$TUNNEL_BIN"; then
+    "$KST_SHELL" "$TUNNEL_SCRIPT" stop 9>&9 || return 1
+    "$KST_SHELL" "$TUNNEL_SCRIPT" start 9>&9 || log WARN 'Userspace helper recovery failed'
+  fi
+  if ! web_running; then "$KST_SHELL" "$WEB_SCRIPT" start 9>&9 || log WARN 'Official web panel recovery failed'; fi
+  return 11
 }
 
-trap 'stop_components; exit 0' TERM INT HUP
 backoff=1
-healthy_since=0
-
-while ! module_disabled; do
-  if ! "$DAEMON_SCRIPT" health >/dev/null 2>&1; then
-    "$WEB_SCRIPT" stop >/dev/null 2>&1 || true
-    "$TUNNEL_SCRIPT" stop >/dev/null 2>&1 || true
-    "$DAEMON_SCRIPT" stop >/dev/null 2>&1 || true
-    if "$DAEMON_SCRIPT" start; then
-      "$TUNNEL_SCRIPT" start || log ERROR "Data-plane helper failed"
-      "$WEB_SCRIPT" start || log WARN "Local web component failed"
+healthy_since=$(date +%s)
+load_config || true
+while :; do
+  with_control_lock reconcile
+  result=$?
+  case "$result" in
+    10) exit 0 ;;
+    11)
+      now=$(date +%s)
+      if [ $((now - healthy_since)) -ge 60 ]; then backoff=1; rm -f "$RUN_DIR/recovery-failure"; fi
+      sleep "$SUPERVISOR_INTERVAL" 8>&- ;;
+    0)
       healthy_since=$(date +%s)
-    else
-      log ERROR "tailscaled start failed; retrying in ${backoff}s"
-      sleep "$backoff"
+      rm -f "$RUN_DIR/recovery-failure"
+      sleep "$backoff" 8>&-
       backoff=$((backoff * 2))
-      [ "$backoff" -gt "$RESTART_BACKOFF_MAX" ] && backoff="$RESTART_BACKOFF_MAX"
-      continue
-    fi
-  else
-    if ! "$TUNNEL_SCRIPT" health >/dev/null 2>&1; then
-      "$TUNNEL_SCRIPT" stop >/dev/null 2>&1 || true
-      "$TUNNEL_SCRIPT" start || log ERROR "Data-plane helper recovery failed"
-    fi
-    if ! "$WEB_SCRIPT" health >/dev/null 2>&1; then
-      "$WEB_SCRIPT" stop >/dev/null 2>&1 || true
-      "$WEB_SCRIPT" start || log WARN "Local web recovery failed"
-    fi
-    now=$(date +%s)
-    if [ "$healthy_since" -eq 0 ]; then
-      healthy_since="$now"
-    elif [ $((now - healthy_since)) -ge 60 ]; then
-      backoff=1
-    fi
-  fi
-  sleep "$SUPERVISOR_INTERVAL"
+      [ "$backoff" -le "$RESTART_BACKOFF_MAX" ] || backoff=$RESTART_BACKOFF_MAX ;;
+    *)
+      healthy_since=$(date +%s)
+      printf 'process-recovery-failed\n' > "$RUN_DIR/recovery-failure"
+      log WARN "Runtime recovery failed; retry in ${backoff}s"
+      sleep "$backoff" 8>&-
+      backoff=$((backoff * 2))
+      [ "$backoff" -le "$RESTART_BACKOFF_MAX" ] || backoff=$RESTART_BACKOFF_MAX ;;
+  esac
 done
-
-stop_components
-exit 0

@@ -1,3 +1,29 @@
+v2.0.0-beta.5 (prerelease)
+
+- Renamed the source project to KernelSU-Tailscaled and adopted the independent
+  kernelsu-tailscaled module ID. The legacy v1 update feed is preserved.
+- Isolated persistent state and complete runtime generations from manager files.
+  Standard ZIP installation verifies, activates, and publishes its own runtime
+  and KernelSU panel/action entrypoints without post-install patch scripts.
+- Added explicit copy-only login migration with stopped-owner checks, validated
+  configuration, recoverable journals and a separate enable gate.
+- Added serialized lifecycle commands, bounded probes, process start-time checks,
+  visible failed/degraded states and same-engine activation rollback.
+- Retain process records and sockets when a still-live process fails identity
+  verification; block replacement instead of spawning duplicate TUN owners.
+- Reject orphaned supervisor passes after they acquire the lifecycle lock,
+  preventing an old generation from cleaning up a newly installed runtime.
+- Added truthful native interface/address/route diagnostics, upstream health
+  warnings, effective preferences and active/staged/previous runtime versions.
+- Restricted configuration to validated data; bounded and redacted runtime logs.
+- Corrected Android mksh descriptor inheritance and BusyBox JSON scalar parsing
+  using actual shell/applet regressions discovered during device verification.
+- Prepared universal-only, immutable official-store distribution gates. Store
+  review and stable publication are separate from candidate builds.
+
+Candidate validation and device results are recorded under docs/verification.
+This beta is not a claim of broad compatibility or long-term network stability.
+
 v1.102.3.1
 
 - Added a compact KernelSU WebUI with module enable/disable, refresh, IP copy,

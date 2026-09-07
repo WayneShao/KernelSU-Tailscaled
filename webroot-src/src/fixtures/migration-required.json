@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 2,
+  "enabled": true,
+  "mode": "native",
+  "lifecycle": "migration-required",
+  "moduleVersion": "2.0.0-beta.1",
+  "tailscaleVersion": "1.102.3",
+  "components": {"supervisor":"stopped","daemon":"stopped","dataPlane":"stopped","web":"stopped"},
+  "runtime": {"activeVersion":null,"stagedVersion":null,"previousVersion":null},
+  "diagnostics": [{"code":"migration-required","severity":"warning","message":"Legacy identity requires explicit migration"}],
+  "tailscale": null,
+  "prefs": null
+}

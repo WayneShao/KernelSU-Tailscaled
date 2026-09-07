@@ -6,6 +6,9 @@
 *.yml text eol=lf
 *.json text eol=lf
 *.md text eol=lf
+*.prop text eol=lf
+*.sha256 text eol=lf
+webroot/** text eol=lf
 files/VERSION.txt text eol=lf
 tailscale/scripts/* text eol=lf
 files/tailscale-* binary

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import hashlib
+import json
 import re
 import sys
 import zipfile
@@ -12,6 +13,13 @@ REQUIRED_ENTRIES = {
     "META-INF/com/google/android/update-binary",
     "META-INF/com/google/android/updater-script",
     "module.prop",
+    "module.json",
+    "control.sh",
+    "scripts/bundle-lib.sh",
+    "scripts/runtime-control.sh",
+    "scripts/install-runtime.sh",
+    "scripts/activate-runtime.sh",
+    "scripts/migrate-legacy.sh",
     "customize.sh",
     "service.sh",
     "uninstall.sh",
@@ -21,6 +29,7 @@ REQUIRED_ENTRIES = {
     "tailscale/config/module.conf",
     "tailscale/scripts/tailscale-service",
     "files/manifest.sha256",
+    "files/VERSION.txt",
 }
 TEXT_SUFFIXES = {
     ".conf",
@@ -40,12 +49,12 @@ TEXT_SUFFIXES = {
 SHA256_LINE = re.compile(r"^([0-9a-f]{64})  ([^\r\n]+)$")
 
 
-class VerificationError(Exception):
+class VerificationError(ValueError):
     pass
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Verify a Magisk Tailscaled module ZIP")
+    parser = argparse.ArgumentParser(description="Verify a KernelSU-Tailscaled module ZIP")
     parser.add_argument("--zip", dest="archive", required=True, type=Path)
     parser.add_argument("--arch", required=True, choices=("all", "arm", "arm64"))
     return parser.parse_args()
@@ -59,8 +68,10 @@ def validate_path(name: str) -> None:
     path = PurePosixPath(name)
     if (
         not name
+        or not path.parts
         or "\\" in name
         or "//" in name
+        or path.as_posix() != name
         or name.startswith("/")
         or ":" in path.parts[0]
         or any(part in {"", ".", ".."} for part in path.parts)
@@ -74,7 +85,8 @@ def unix_mode(info: zipfile.ZipInfo) -> int:
 
 def is_executable_path(name: str) -> bool:
     return (
-        name in {"customize.sh", "service.sh", "action.sh", "uninstall.sh"}
+        name in {"customize.sh", "service.sh", "action.sh", "uninstall.sh", "control.sh"}
+        or name.startswith("scripts/") and name.endswith(".sh")
         or name == "META-INF/com/google/android/update-binary"
         or name.startswith("tailscale/scripts/")
         or name.startswith("system/bin/")
@@ -86,7 +98,7 @@ def is_executable_path(name: str) -> bool:
 
 def is_text_path(name: str) -> bool:
     path = PurePosixPath(name)
-    return path.suffix.lower() in TEXT_SUFFIXES or name.startswith("tailscale/scripts/")
+    return path.suffix.lower() in TEXT_SUFFIXES or name.startswith("tailscale/scripts/") or name in {"LICENSE", "NOTICE", "skip_mount", "META-INF/com/google/android/update-binary", "META-INF/com/google/android/updater-script"}
 
 
 def parse_module_prop(content: bytes) -> dict[str, str]:
@@ -105,11 +117,28 @@ def parse_module_prop(content: bytes) -> dict[str, str]:
     for key in ("id", "name", "version", "versionCode", "author", "description"):
         if not properties.get(key):
             fail(f"missing module.prop field: {key}")
-    if properties["id"] != "magisk-tailscaled":
+    if properties["id"] != "kernelsu-tailscaled":
         fail(f"unexpected module id: {properties['id']}")
-    if not properties["versionCode"].isdigit():
+    if not properties["versionCode"].isdigit() or not 0 < int(properties["versionCode"]) <= 2147483647:
         fail("module versionCode is not an integer")
     return properties
+
+
+def validate_bundles(archive: zipfile.ZipFile, names: set[str], arch: str) -> None:
+    for selected in (('arm', 'arm64') if arch == 'all' else (arch,)):
+        name = f'files/bundle-{selected}.sha256'
+        if name not in names:
+            fail(f'missing installed bundle manifest: {selected}')
+        installed = {path: archive.read(path) for path in names if not path.startswith(('META-INF/', 'files/')) and not path.endswith('/') and path != 'customize.sh'}
+        installed['engine-version'] = archive.read('files/VERSION.txt')
+        installed['bin/tailscale'] = archive.read(f'files/tailscale-{selected}')
+        installed['bin/tailscaled'] = archive.read(f'files/tailscaled-{selected}')
+        helper = f'files/hev-socks5-tunnel-linux-{selected}'
+        if helper in names:
+            installed['bin/hev-socks5-tunnel'] = archive.read(helper)
+        expected = ''.join(f'{hashlib.sha256(installed[path]).hexdigest()}  {path}\n' for path in sorted(installed)).encode('ascii')
+        if archive.read(name) != expected:
+            fail(f'installed bundle manifest mismatch: {selected}')
 
 
 def validate_architecture(names: set[str], arch: str) -> None:
@@ -196,6 +225,13 @@ def verify(archive_path: Path, arch: str) -> None:
         parse_module_prop(archive.read("module.prop"))
         validate_architecture(names, arch)
         validate_manifest(archive, names)
+        validate_bundles(archive, names, arch)
+        try:
+            meta = json.loads(archive.read('module.json'))
+            if not isinstance(meta, dict) or meta.get('metamodule') is not False:
+                fail('module.json must declare metamodule=false')
+        except (ValueError, UnicodeDecodeError) as error:
+            fail(f'invalid module.json: {error}')
 
 
 def main() -> int:

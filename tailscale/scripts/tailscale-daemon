@@ -1,87 +1,86 @@
 #!/system/bin/sh
+# shellcheck disable=SC3043
 SCRIPT_DIR=${0%/*}
 . "$SCRIPT_DIR/common.sh"
-load_config || exit 1
+FRESH_MARKER="$TS_DIR/fresh-defaults.pending"
 HOSTNAME_MARKER="$TS_DIR/hostname.initialized"
 
-daemon_health() {
-  pid=$(read_pid "$DAEMON_PID") || return 1
-  pid_matches "$pid" "$TAILSCALED_BIN" && socket_ready
+hostname_slug() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/^-//; s/-$//' | cut -c 1-63 | sed 's/-$//'
 }
 
 initialize_hostname() {
-  [ -f "$HOSTNAME_MARKER" ] && return 0
-  current=$(
-    "$TAILSCALE_BIN" --socket="$SOCKET_FILE" debug prefs 2>/dev/null |
-      sed -n 's/^[[:space:]]*"Hostname":[[:space:]]*"\([^"]*\)".*/\1/p' |
-      head -n 1
-  )
-  case "$current" in
-    '' | localhost) ;;
-    *) : > "$HOSTNAME_MARKER"; return 0 ;;
-  esac
-
-  raw_name="${DEVICE_HOSTNAME:-}"
-  [ -n "$raw_name" ] || raw_name=$(getprop ro.product.name 2>/dev/null)
-  [ -n "$raw_name" ] || raw_name=$(getprop ro.product.model 2>/dev/null)
-  hostname=$(
-    printf '%s' "$raw_name" |
-      tr '[:upper:]' '[:lower:]' |
-      sed 's/[^a-z0-9-]/-/g; s/--*/-/g; s/^-//; s/-$//'
-  )
-  [ -n "$hostname" ] || return 0
-  if "$TAILSCALE_BIN" --socket="$SOCKET_FILE" set --hostname="$hostname"; then
+  [ -f "$TS_DIR/migration-origin" ] && return 0
+  [ -f "$FRESH_MARKER" ] || return 0
+  local prefs current raw_name hostname
+  prefs=$(cli_json prefs debug prefs) || return 1
+  current=$(printf '%s' "$prefs" | json_read hostname)
+  raw_name="$DEVICE_HOSTNAME"
+  [ -n "$raw_name" ] || raw_name=$(bounded 1 settings get global device_name 2>/dev/null)
+  case "$raw_name" in null | unknown) raw_name= ;; esac
+  hostname=$(hostname_slug "$raw_name")
+  if [ -z "$hostname" ]; then hostname=$(hostname_slug "$(bounded 1 getprop ro.product.name 2>/dev/null)"); fi
+  if [ -z "$hostname" ]; then hostname=$(hostname_slug "$(bounded 1 getprop ro.product.model 2>/dev/null)"); fi
+  [ -n "$hostname" ] || hostname=android
+  case "$current" in '' | localhost) ;; *) hostname="$current" ;; esac
+  if bounded "$KST_CLI_TIMEOUT" "$TAILSCALE_BIN" --socket="$SOCKET_FILE" set --hostname="$hostname" \
+    --accept-dns=false --accept-routes=false --exit-node= --advertise-routes= >/dev/null 2>&1; then
     : > "$HOSTNAME_MARKER"
-    log INFO "Initialized Tailscale hostname: $hostname"
+    rm -f "$FRESH_MARKER"
+    log INFO 'Initialized fresh hostname and conservative DNS/route preferences'
   else
-    log WARN "Tailscale hostname initialization failed"
+    log ERROR 'Fresh preference initialization failed before interactive login'
     return 1
   fi
 }
 
-daemon_start() {
-  if daemon_health; then
-    initialize_hostname
-    return 0
-  fi
-  mkdir -p "$RUN_DIR" "$LOG_DIR"
+daemon_health() { daemon_running && socket_ready; }
+
+daemon_stop() {
+  stop_owned "$DAEMON_PID" "$TAILSCALED_BIN" "--socket=$SOCKET_FILE" || return 1
+  stop_logger tailscaled || return 1
   rm -f "$SOCKET_FILE"
-  if [ -n "${CONTROL_PROXY:-}" ]; then
-    export HTTP_PROXY="$CONTROL_PROXY"
-    export HTTPS_PROXY="$CONTROL_PROXY"
-    export NO_PROXY="127.0.0.1,localhost"
-  fi
-  if [ "$MODE" = "userspace" ]; then
-    nohup "$TAILSCALED_BIN" --tun=userspace-networking --socks5-server="$SOCKS_LISTEN" \
-      --state="$STATE_FILE" --socket="$SOCKET_FILE" --port="$TAILSCALE_PORT" \
-      --no-logs-no-support >> "$LOG_DIR/tailscaled.log" 2>&1 &
+}
+
+daemon_start() {
+  load_config || { log ERROR "$CONFIG_ERROR"; return 1; }
+  module_disabled && return 1
+  if daemon_running; then daemon_health && initialize_hostname; return $?; fi
+  stop_owned "$DAEMON_PID" "$TAILSCALED_BIN" "--socket=$SOCKET_FILE" || return 1
+  [ -x "$TAILSCALED_BIN" ] && [ -x "$TAILSCALE_BIN" ] || return 1
+  ensure_dirs || return 1
+  [ -e "$STATE_FILE" ] || : > "$FRESH_MARKER"
+  rm -f "$SOCKET_FILE"
+  local tun="$TUN_NAME" deadline
+  [ "$MODE" = userspace ] && tun=userspace-networking
+  if [ -n "$CONTROL_PROXY" ]; then
+    export HTTP_PROXY="$CONTROL_PROXY" HTTPS_PROXY="$CONTROL_PROXY" NO_PROXY="127.0.0.1,localhost"
   else
-    nohup "$TAILSCALED_BIN" --tun="$TUN_NAME" --state="$STATE_FILE" \
-      --socket="$SOCKET_FILE" --port="$TAILSCALE_PORT" \
-      --no-logs-no-support >> "$LOG_DIR/tailscaled.log" 2>&1 &
+    unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
   fi
-  pid=$!
-  write_pid "$DAEMON_PID" "$pid"
-  count=0
-  while [ "$count" -lt 30 ]; do
+  if [ "$MODE" = userspace ]; then
+    launch_logged tailscaled "$DAEMON_PID" "$TAILSCALED_BIN" "--socket=$SOCKET_FILE" "$TAILSCALED_BIN" \
+      --tun="$tun" --socks5-server="$SOCKS_LISTEN" --state="$STATE_FILE" --socket="$SOCKET_FILE" --port="$TAILSCALE_PORT" --no-logs-no-support || return 1
+  else
+    launch_logged tailscaled "$DAEMON_PID" "$TAILSCALED_BIN" "--socket=$SOCKET_FILE" "$TAILSCALED_BIN" \
+      --tun="$tun" --state="$STATE_FILE" --socket="$SOCKET_FILE" --port="$TAILSCALE_PORT" --no-logs-no-support || return 1
+  fi
+  deadline=$(($(date +%s) + KST_START_TIMEOUT))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
     if daemon_health; then
-      initialize_hostname
-      return 0
+      if initialize_hostname; then [ ! -f "$STATE_FILE" ] || chmod 0600 "$STATE_FILE"; return 0; fi
+      break
     fi
-    pid_matches "$pid" "$TAILSCALED_BIN" || break
-    sleep 1
-    count=$((count + 1))
+    daemon_running || break
+    sleep 0.2
   done
-  stop_owned "$DAEMON_PID" "$TAILSCALED_BIN"
+  daemon_stop
   return 1
 }
 
 case "$1" in
-  start) daemon_start ;;
-  stop)
-    stop_owned "$DAEMON_PID" "$TAILSCALED_BIN"
-    rm -f "$SOCKET_FILE"
-    ;;
-  health) daemon_health ;;
-  *) echo "usage: tailscale-daemon {start|stop|health}" >&2; exit 2 ;;
+  start) with_control_lock daemon_start ;;
+  stop) with_control_lock daemon_stop ;;
+  health) load_config && daemon_health ;;
+  *) echo 'usage: tailscale-daemon {start|stop|health}' >&2; exit 2 ;;
 esac

@@ -4,11 +4,15 @@ import {
   Copy,
   createIcons,
   ExternalLink,
+  Import,
+  ListChecks,
+  PackageCheck,
   Power,
   PowerOff,
   RefreshCw,
   RotateCw,
   ScrollText,
+  Stethoscope,
 } from "lucide";
 import { toast } from "kernelsu";
 import { runAction, type ModuleAction } from "./api";
@@ -22,10 +26,11 @@ const root: HTMLElement = applicationRoot;
 
 let currentStatus: RuntimeStatus | null = null;
 let busy = false;
+const idleDisabled = new WeakMap<HTMLButtonElement, boolean>();
 
 function drawIcons(): void {
   createIcons({
-    icons: { ArrowLeft, Circle, Copy, ExternalLink, Power, PowerOff, RefreshCw, RotateCw, ScrollText },
+    icons: { ArrowLeft, Circle, Copy, ExternalLink, Import, ListChecks, PackageCheck, Power, PowerOff, RefreshCw, RotateCw, ScrollText, Stethoscope },
     attrs: { "stroke-width": 2, width: 18, height: 18 },
   });
 }
@@ -33,7 +38,13 @@ function drawIcons(): void {
 function setBusy(value: boolean): void {
   busy = value;
   root.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
-    button.disabled = value || button.disabled;
+    if (value) {
+      if (!idleDisabled.has(button)) idleDisabled.set(button, button.disabled);
+      button.disabled = true;
+    } else if (idleDisabled.has(button)) {
+      button.disabled = idleDisabled.get(button)!;
+      idleDisabled.delete(button);
+    }
   });
   root.setAttribute("aria-busy", String(value));
 }
@@ -42,8 +53,17 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function execute(action: ModuleAction): Promise<string> {
-  const result = await runAction(action);
+function announce(message: string, isError = false): void {
+  root.querySelector(".notice")?.remove();
+  const notice = document.createElement("p");
+  notice.className = "notice";
+  notice.setAttribute("role", isError ? "alert" : "status");
+  notice.textContent = message;
+  root.querySelector("header")?.after(notice);
+}
+
+async function execute(action: ModuleAction, remainingMs?: number): Promise<string> {
+  const result = await runAction(action, remainingMs);
   if (result.exitCode !== 0) {
     throw new Error(result.stderr.trim() || result.stdout.trim() || `命令失败 (${result.exitCode})`);
   }
@@ -51,30 +71,14 @@ async function execute(action: ModuleAction): Promise<string> {
 }
 
 async function refreshStatus(): Promise<void> {
-  setBusy(true);
-  try {
-    currentStatus = parseRuntimeStatus(await execute("status-json"));
-    renderDashboard(root, currentStatus);
-    drawIcons();
-  } catch (error) {
-    renderMessage(root, "状态不可用", errorMessage(error));
-    drawIcons();
-  } finally {
-    setBusy(false);
-  }
+  currentStatus = parseRuntimeStatus(await execute("status-json"));
+  renderDashboard(root, currentStatus);
+  drawIcons();
 }
 
-async function showLogs(): Promise<void> {
-  setBusy(true);
-  try {
-    renderLogs(root, await execute("logs"));
-    drawIcons();
-  } catch (error) {
-    renderMessage(root, "日志不可用", errorMessage(error), "logs");
-    drawIcons();
-  } finally {
-    setBusy(false);
-  }
+async function showLogs(kind: "logs" | "diagnostics"): Promise<void> {
+  renderLogs(root, await execute(kind), kind);
+  drawIcons();
 }
 
 function delay(milliseconds: number): Promise<void> {
@@ -82,62 +86,83 @@ function delay(milliseconds: number): Promise<void> {
 }
 
 async function waitForWeb(): Promise<void> {
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    const status = parseRuntimeStatus(await execute("status-json"));
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline - 2_000) {
+    const status = parseRuntimeStatus(await execute("status-json", deadline - Date.now()));
+    currentStatus = status;
     if (status.components.web === "running") return;
-    await delay(500);
+    await delay(Math.min(500, Math.max(0, deadline - Date.now())));
   }
-  throw new Error("本地面板未在限定时间内启动");
+  throw new Error("本地面板启动超时，请刷新状态确认结果");
 }
 
 async function openPanel(): Promise<void> {
-  setBusy(true);
-  try {
-    if (currentStatus?.components.web !== "running") {
-      await execute("web-restart");
-      await waitForWeb();
-    }
-    window.location.href = "http://127.0.0.1:8088/";
-  } catch (error) {
-    renderMessage(root, "面板启动失败", errorMessage(error), "open-panel");
-    drawIcons();
-    setBusy(false);
+  if (currentStatus?.components.web !== "running") {
+    await execute("web-restart");
+    await waitForWeb();
   }
+  if (!currentStatus) throw new Error("状态不可用");
+  window.location.href = currentStatus.panelURL;
 }
 
 async function handleAction(action: string): Promise<void> {
   if (busy) return;
-  switch (action) {
-    case "refresh":
-    case "back":
-      await refreshStatus();
-      return;
-    case "logs":
-    case "refresh-logs":
-      await showLogs();
-      return;
-    case "copy-ip":
-      if (currentStatus?.ipv4) {
-        await navigator.clipboard.writeText(currentStatus.ipv4);
-        toast("Tailscale IP 已复制");
+  if (action === "migrate-legacy" && !window.confirm("迁移旧模块身份？\n旧模块须已禁用或移除，且旧、新运行时均已停止；新身份必须不存在。旧文件将保留，迁移后等待单独启用。")) return;
+  if (action === "apply-staged" && !window.confirm("应用暂存运行时？\n当前运行时将停止并切换至已验证的暂存版本。此操作更新运行时，不更新当前管理器中的 WebUI，也不重启设备。")) return;
+  setBusy(true);
+  announce("处理中");
+  try {
+    switch (action) {
+      case "refresh":
+      case "back":
+        await refreshStatus();
+        break;
+      case "logs":
+      case "refresh-logs":
+        await showLogs("logs");
+        break;
+      case "diagnostics":
+      case "refresh-diagnostics":
+        await showLogs("diagnostics");
+        break;
+      case "migration-status": {
+        const labels: Record<string, string> = {
+          "migration-incomplete": "迁移未完成", "awaiting-enable": "已迁移，待启用",
+          "destination-exists": "新模块身份已存在", "migration-required": "待迁移",
+          "no-legacy-identity": "未发现旧身份",
+        };
+        const data: unknown = JSON.parse(await execute("migration-status"));
+        if (!data || typeof data !== "object" || !("state" in data) || typeof data.state !== "string" || !Object.hasOwn(labels, data.state)) throw new Error("Invalid migration status");
+        announce(labels[data.state]!);
+        break;
       }
-      return;
-    case "open-panel":
-      await openPanel();
-      return;
-    case "enable":
-    case "disable":
-    case "restart":
-      setBusy(true);
-      try {
+      case "copy-ip":
+        if (currentStatus?.ipv4) {
+          await navigator.clipboard.writeText(currentStatus.ipv4);
+          announce("Tailscale IP 已复制");
+          toast("Tailscale IP 已复制");
+        }
+        break;
+      case "open-panel":
+        await openPanel();
+        break;
+      case "enable":
+      case "disable":
+      case "restart":
+      case "migrate-legacy":
+      case "apply-staged":
         await execute(action);
         await refreshStatus();
-      } catch (error) {
-        renderMessage(root, "操作失败", errorMessage(error));
-        drawIcons();
-        setBusy(false);
-      }
-      return;
+        break;
+    }
+  } catch (error) {
+    if (!currentStatus) {
+      renderMessage(root, "状态不可用", errorMessage(error));
+      drawIcons();
+    }
+    announce(errorMessage(error), true);
+  } finally {
+    setBusy(false);
   }
 }
 
@@ -148,4 +173,4 @@ root.addEventListener("click", (event) => {
 
 renderMessage(root, "正在读取状态", "请稍候");
 drawIcons();
-void refreshStatus();
+void handleAction("refresh");

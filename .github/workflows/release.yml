@@ -2,8 +2,8 @@ name: Build, Verify, and Release
 
 on:
   push:
-    branches: [main]
-    tags: ["v*"]
+    branches: [main, "feature/**"]
+    tags: ["v2.*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -39,7 +39,10 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Verify Python contracts
-        run: python -m unittest discover -s tests -v
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mksh busybox
+          python -m unittest discover -s tests -v
 
       - name: Verify frontend
         working-directory: webroot-src
@@ -48,17 +51,24 @@ jobs:
           npm test
           npm run build
 
+      - name: Verify WebUI in desktop and mobile browsers
+        working-directory: webroot-src
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:browser
+
       - name: Verify committed WebUI build
         run: git diff --exit-code -- webroot
 
       - name: Verify shell scripts
         run: |
-          find . -type f \( -name '*.sh' -o -path './tailscale/scripts/*' \) \
-            -not -path './webroot-src/node_modules/*' -print0 | xargs -0 -n1 sh -n
+          find tailscale/scripts -type f ! -name '*.awk' -print0 | xargs -0 -n1 sh -n
+          find scripts -name '*.sh' -print0 | xargs -0 -n1 sh -n
           shellcheck --version
           shellcheck --exclude=SC1090,SC1091,SC2034 \
-            customize.sh service.sh action.sh uninstall.sh \
-            scripts/build-release.sh tailscale/scripts/*
+            control.sh customize.sh service.sh action.sh uninstall.sh scripts/*.sh
+          find tailscale/scripts -type f ! -name '*.awk' -print0 | \
+            xargs -0 shellcheck --exclude=SC1090,SC1091,SC2034
 
       - name: Verify binary manifest
         run: sha256sum --check files/manifest.sha256
@@ -70,11 +80,11 @@ jobs:
         run: |
           version=$(sed -n 's/^version=//p' module.prop)
           python scripts/verify-package.py \
-            --zip "dist/Magisk-Tailscaled-v${version}.zip" --arch all
+            --zip "dist/KernelSU-Tailscaled-v${version}.zip" --arch all
           python scripts/verify-package.py \
-            --zip "dist/Magisk-Tailscaled-arm-v${version}.zip" --arch arm
+            --zip "dist/KernelSU-Tailscaled-arm-v${version}.zip" --arch arm
           python scripts/verify-package.py \
-            --zip "dist/Magisk-Tailscaled-arm64-v${version}.zip" --arch arm64
+            --zip "dist/KernelSU-Tailscaled-arm64-v${version}.zip" --arch arm64
 
       - name: Verify reproducible package bytes
         run: |
@@ -87,15 +97,18 @@ jobs:
       - name: Upload verified packages
         uses: actions/upload-artifact@v7
         with:
-          name: Magisk-Tailscaled-packages
+          name: KernelSU-Tailscaled-packages
           path: dist/*.zip
           if-no-files-found: error
           retention-days: 14
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      startsWith(github.ref, 'refs/tags/v2.') &&
+      (contains(github.ref_name, '-') || vars.STABLE_RELEASE_APPROVED == 'true')
     needs: build
     runs-on: ubuntu-latest
+    environment: source-release
     permissions:
       contents: write
     steps:
@@ -105,7 +118,7 @@ jobs:
       - name: Download verified packages
         uses: actions/download-artifact@v8
         with:
-          name: Magisk-Tailscaled-packages
+          name: KernelSU-Tailscaled-packages
           path: dist
 
       - name: Verify tag matches module version
@@ -113,11 +126,41 @@ jobs:
           version=$(sed -n 's/^version=//p' module.prop)
           test "${GITHUB_REF_NAME}" = "v${version}"
 
-      - name: Publish GitHub Release
+      - name: Require immutable-release configuration before creating a draft
+        env:
+          GH_TOKEN: ${{ secrets.SOURCE_RELEASE_READ_TOKEN }}
+          IMMUTABILITY_CONFIRMED: ${{ vars.SOURCE_IMMUTABILITY_CONFIRMED }}
+        run: |
+          if [ -n "$GH_TOKEN" ]; then
+            test "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" = true
+          else
+            # GITHUB_TOKEN has no administration read permission for this setting.
+            test "$IMMUTABILITY_CONFIRMED" = true
+          fi
+
+      - name: Stage and verify GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          flags=()
+          case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease --latest=false) ;; esac
           gh release create "${GITHUB_REF_NAME}" dist/*.zip \
-            --verify-tag \
-            --title "Magisk Tailscaled ${GITHUB_REF_NAME}" \
+            --verify-tag --draft "${flags[@]}" \
+            --title "KernelSU-Tailscaled ${GITHUB_REF_NAME}" \
             --notes-file CHANGELOG.txt
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" > draft.json
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          release = json.loads(Path('draft.json').read_text())
+          files = {p.name: p for p in Path('dist').glob('*.zip')}
+          assert release['draft'] is True
+          assert {a['name'] for a in release['assets']} == files.keys()
+          assert len(release['assets']) == len(files)
+          for asset in release['assets']:
+              assert asset['content_type'] in ('application/zip', 'application/x-zip-compressed')
+              assert asset['digest'] == 'sha256:' + hashlib.sha256(files[asset['name']].read_bytes()).hexdigest()
+          PY
+          gh release edit "$GITHUB_REF_NAME" --draft=false
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" --jq .immutable)" = true
+          for archive in dist/*.zip; do gh release verify-asset "$GITHUB_REF_NAME" "$archive"; done

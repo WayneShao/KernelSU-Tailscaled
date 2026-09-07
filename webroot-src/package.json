@@ -1,10 +1,12 @@
 {
-  "name": "magisk-tailscaled-webui",
-  "version": "1.102.3.1",
+  "name": "kernelsu-tailscaled-webui",
+  "version": "2.0.0-beta.5",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "dev": "vite",
+    "test:browser": "playwright test",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -13,6 +15,7 @@
     "lucide": "1.40.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/node": "26.4.1",
     "jsdom": "30.0.1",
     "typescript": "7.0.2",

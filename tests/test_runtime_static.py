@@ -28,8 +28,10 @@ def shell_sources() -> list[Path]:
         ROOT / "service.sh",
         ROOT / "action.sh",
         ROOT / "uninstall.sh",
+        ROOT / "control.sh",
     ]
-    roots.extend((ROOT / "tailscale" / "scripts").glob("*"))
+    roots.extend(path for path in (ROOT / "tailscale" / "scripts").glob("*") if path.suffix != '.awk')
+    roots.extend((ROOT / "scripts").glob("*.sh"))
     roots.extend((ROOT / "system" / "bin").glob("*"))
     return [path for path in roots if path.is_file()]
 
@@ -96,22 +98,23 @@ class RuntimeStaticTests(unittest.TestCase):
     def test_action_button_delegates_to_toggle(self) -> None:
         source = (ROOT / "action.sh").read_text(encoding="utf-8")
         self.assertIn('MODDIR=${0%/*}', source)
-        self.assertIn('"$MODDIR/tailscale/scripts/tailscale-service" toggle', source)
+        self.assertIn('"$MODDIR/control.sh" toggle', source)
 
     def test_boot_service_respects_disable_marker(self) -> None:
         source = (ROOT / "service.sh").read_text(encoding="utf-8")
         self.assertIn('MODDIR=${0%/*}', source)
         self.assertIn('"$MODDIR/disable"', source)
-        self.assertIn('"$MODDIR/tailscale/scripts/tailscale-service" start', source)
+        self.assertIn('"$MODDIR/control.sh" boot', source)
 
-    def test_installer_preserves_canonical_state_and_config(self) -> None:
+    def test_installer_validates_bundle_and_delegates_complete_install(self) -> None:
         source = (ROOT / "customize.sh").read_text(encoding="utf-8")
-        self.assertIn('STATE_FILE="$TS_DIR/tailscaled.state"', source)
-        self.assertIn('LEGACY_STATE="$TS_DIR/tmp/tailscaled.state"', source)
-        self.assertIn('[ ! -f "$STATE_FILE" ]', source)
-        self.assertIn('chmod 0600 "$STATE_FILE"', source)
-        self.assertIn('[ ! -f "$TS_CONFIG/module.conf" ]', source)
-        self.assertIn('.new', source)
+        self.assertIn('"$MODPATH/bin/tailscale"', source)
+        self.assertIn('"$MODPATH/bin/tailscaled"', source)
+        self.assertIn('"$MODPATH/bundle.sha256"', source)
+        self.assertIn('kst_verify_bundle "$MODPATH"', source)
+        self.assertIn('scripts/install-runtime.sh', source)
+        self.assertNotIn('/data/adb/tailscale', source)
+        self.assertNotIn('> "$STATE_FILE"', source)
         self.assertNotIn('rm -rf "$TS_DIR"', source)
 
     def test_official_web_is_bound_to_loopback(self) -> None:
@@ -126,7 +129,7 @@ class RuntimeStaticTests(unittest.TestCase):
         self.assertIn('HTTPS_PROXY="$CONTROL_PROXY"', daemon)
         self.assertIn('NO_PROXY="127.0.0.1,localhost"', daemon)
 
-    def test_hostname_is_initialized_once_from_android_product_name(self) -> None:
+    def test_fresh_hostname_prefers_device_name_and_preserves_existing_state(self) -> None:
         config = (ROOT / "tailscale/config/module.conf").read_text(encoding="utf-8")
         daemon = (ROOT / "tailscale/scripts/tailscale-daemon").read_text(encoding="utf-8")
         self.assertIn("DEVICE_HOSTNAME=\n", config)
@@ -134,7 +137,9 @@ class RuntimeStaticTests(unittest.TestCase):
         self.assertIn("initialize_hostname()", daemon)
         self.assertIn("getprop ro.product.name", daemon)
         self.assertIn('set --hostname="$hostname"', daemon)
-        self.assertIn('[ -f "$HOSTNAME_MARKER" ] && return 0', daemon)
+        self.assertIn('settings get global device_name', daemon)
+        self.assertIn('[ -f "$FRESH_MARKER" ] || return 0', daemon)
+        self.assertIn('--accept-dns=false --accept-routes=false', daemon)
 
     def test_legacy_runtime_files_are_removed(self) -> None:
         legacy = {

@@ -1,124 +1,166 @@
 #!/system/bin/sh
+# shellcheck disable=SC3043
 SCRIPT_DIR=${0%/*}
 . "$SCRIPT_DIR/common.sh"
-load_config || exit 1
-
-supervisor_health() {
-  pid=$(read_pid "$SUPERVISOR_PID") || return 1
-  pid_matches "$pid" /system/bin/sh "$SUPERVISOR_SCRIPT"
-}
 
 runtime_stop() {
-  stop_owned "$SUPERVISOR_PID" /system/bin/sh "$SUPERVISOR_SCRIPT"
-  "$WEB_SCRIPT" stop >/dev/null 2>&1 || true
-  "$TUNNEL_SCRIPT" stop >/dev/null 2>&1 || true
-  "$DAEMON_SCRIPT" stop >/dev/null 2>&1 || true
-  echo "Tailscale runtime stopped"
+  local failed=0
+  printf '0\n' > "$RUN_DIR/wanted"
+  # The supervisor's TERM trap exits without acquiring this controller lock.
+  stop_owned "$SUPERVISOR_PID" "$SUPERVISOR_SCRIPT" || failed=1
+  "$KST_SHELL" "$WEB_SCRIPT" stop 9>&9 || failed=1
+  "$KST_SHELL" "$TUNNEL_SCRIPT" stop 9>&9 || failed=1
+  "$KST_SHELL" "$DAEMON_SCRIPT" stop 9>&9 || failed=1
+  if [ "$failed" = 1 ]; then
+    set_lifecycle failed
+    echo 'Tailscale runtime stop failed; retained owned process records' >&2
+    return 1
+  fi
+  set_lifecycle stopped
+  echo 'Tailscale runtime stopped'
+}
+
+migration_required() {
+  [ -f "$TS_DIR/migration-required" ] || [ -e "$TS_DIR/migration.pending" ] || {
+    [ ! -e "$STATE_FILE" ] && {
+      [ -e "${KST_LEGACY_DIR:-/data/adb/tailscale}/tailscaled.state" ] || [ -e "${KST_LEGACY_DIR:-/data/adb/tailscale}/tmp/tailscaled.state" ]
+    }
+  }
 }
 
 runtime_start() {
-  module_disabled && {
-    echo "Tailscale module is disabled"
+  if module_disabled; then echo 'Tailscale module is disabled' >&2; return 1; fi
+  if migration_required; then set_lifecycle migration-required; echo 'Legacy identity requires explicit migration' >&2; return 1; fi
+  printf '1\n' > "$RUN_DIR/wanted"
+  if ! load_config; then
+    set_lifecycle failed
+    log ERROR "$CONFIG_ERROR"
+    echo "$CONFIG_ERROR" >&2
     return 1
-  }
-  supervisor_health && {
-    echo "Tailscale runtime is already running"
-    return 0
-  }
-  mkdir -p "$RUN_DIR" "$LOG_DIR"
-  nohup "$SUPERVISOR_SCRIPT" >> "$LOG_DIR/supervisor.log" 2>&1 &
-  pid=$!
-  write_pid "$SUPERVISOR_PID" "$pid"
-  count=0
-  while [ "$count" -lt 35 ]; do
-    if "$DAEMON_SCRIPT" health >/dev/null 2>&1; then
-      echo "Tailscale runtime started"
-      return 0
-    fi
-    supervisor_health || break
-    sleep 1
-    count=$((count + 1))
-  done
-  runtime_stop >/dev/null 2>&1
-  echo "Tailscale runtime failed to start" >&2
-  return 1
-}
-
-runtime_enable() {
-  rm -f "$MODDIR/disable"
-  if runtime_start; then
-    echo "Tailscale module enabled"
-    return 0
   fi
-  : > "$MODDIR/disable"
-  runtime_stop >/dev/null 2>&1
-  echo "Tailscale module enable failed" >&2
-  return 1
+  set_lifecycle starting
+  if ! "$KST_SHELL" "$DAEMON_SCRIPT" start 9>&9; then
+    set_lifecycle failed
+    log ERROR 'Daemon startup failed'
+    echo 'Tailscale daemon startup failed' >&2
+    return 1
+  fi
+  "$KST_SHELL" "$TUNNEL_SCRIPT" start 9>&9 || log WARN 'Data-plane helper startup failed'
+  "$KST_SHELL" "$WEB_SCRIPT" start 9>&9 || log WARN 'Official web panel startup failed'
+  if ! supervisor_health; then
+    (exec 9>&- 8>&-; unset KST_LOCK_HELD; trap '' HUP; exec "$KST_SHELL" "$SUPERVISOR_SCRIPT") </dev/null >/dev/null 2>&1 &
+    local pid=$!
+    if ! write_pid "$SUPERVISOR_PID" "$pid" "$SUPERVISOR_SCRIPT"; then
+      set_lifecycle failed
+      echo 'Supervisor startup failed' >&2
+      return 1
+    fi
+  fi
+  set_lifecycle running
+  echo 'Tailscale runtime started'
 }
 
-runtime_disable() {
-  : > "$MODDIR/disable"
-  runtime_stop
-  echo "Tailscale module disabled"
+runtime_enable() { rm -f "$MODDIR/disable"; runtime_start; }
+runtime_disable() { : > "$MODDIR/disable"; runtime_stop; }
+runtime_toggle() { if module_disabled; then runtime_enable; else runtime_disable; fi; }
+runtime_restart() { runtime_stop >/dev/null && runtime_start; }
+web_restart() { "$KST_SHELL" "$WEB_SCRIPT" stop 9>&9 && "$KST_SHELL" "$WEB_SCRIPT" start 9>&9; }
+
+version_of() { sed -n 's/^version=//p' "$1/module.prop" 2>/dev/null | head -n 1; }
+version_json() {
+  local version
+  version=$(version_of "$1")
+  if [ -n "$version" ]; then printf '"%s"' "$(json_escape "$version")"; else printf 'null'; fi
 }
 
 status_json() {
-  if module_disabled; then enabled=false; else enabled=true; fi
-  if supervisor_health; then supervisor=running; else supervisor=stopped; fi
-  if "$DAEMON_SCRIPT" health >/dev/null 2>&1; then daemon=running; else daemon=stopped; fi
-  if "$WEB_SCRIPT" health >/dev/null 2>&1; then web=running; else web=stopped; fi
-  if "$TUNNEL_SCRIPT" health >/dev/null 2>&1; then data_plane=running; else data_plane=stopped; fi
-  module_version=$(sed -n 's/^version=//p' "$MODDIR/module.prop" | head -n 1)
-  tailscale_version=$("$TAILSCALE_BIN" version 2>/dev/null | head -n 1)
-  tailscale_status=$("$TAILSCALE_BIN" --socket="$SOCKET_FILE" status --json 2>/dev/null || true)
-  tailscale_prefs=$("$TAILSCALE_BIN" --socket="$SOCKET_FILE" debug prefs 2>/dev/null || true)
+  local enabled=true supervisor=stopped daemon=stopped web=stopped lifecycle=stopped config_ok=1
+  local tailscale_status=null tailscale_prefs=null module_version engine_version backend warning health saved
+  DIAGNOSTICS=
+  DATA_PLANE=stopped
+  load_config || { config_ok=0; diagnostic config-invalid error "$CONFIG_ERROR"; }
+  module_disabled && enabled=false
+  supervisor_health && supervisor=running
+  daemon_running && daemon=running
+  if web_running; then
+    if [ "$config_ok" = 1 ] && tcp_ready "$WEB_LISTEN"; then web=running; else web=unknown; fi
+  fi
+  if [ "$daemon" = running ]; then
+    if ! tailscale_status=$(cli_json status status --json); then
+      tailscale_status=null
+      diagnostic api-unavailable error 'Tailscale status timed out, failed, or contained malformed JSON'
+    fi
+    if ! tailscale_prefs=$(cli_json prefs debug prefs); then
+      tailscale_prefs=null
+      diagnostic prefs-unavailable warning 'Tailscale preferences timed out, failed, or contained malformed JSON'
+    fi
+    if [ "$tailscale_status" != null ] && [ "$config_ok" = 1 ]; then
+      data_plane_health "$tailscale_status" || true
+      health=$(printf '%s' "$tailscale_status" | json_read health)
+      [ -z "$health" ] || diagnostic upstream-health warning 'Tailscale reports health warnings; see tailscale.Health'
+    else DATA_PLANE=unknown
+    fi
+    if [ "$tailscale_prefs" != null ]; then
+      for warning in $(printf '%s' "$tailscale_prefs" | json_read warnings); do
+        case "$warning" in
+          dns) diagnostic dns-accepted warning 'Effective preferences accept Tailscale DNS settings' ;;
+          routes) diagnostic routes-accepted warning 'Effective preferences accept advertised subnet routes' ;;
+          exit) diagnostic exit-node-configured warning 'Effective preferences select an exit node' ;;
+          advertised) diagnostic routes-advertised warning 'Effective preferences advertise routes' ;;
+        esac
+      done
+    fi
+  fi
+  saved=$(sed -n '1p' "$RUN_DIR/lifecycle" 2>/dev/null)
+  if [ "$enabled" = false ]; then lifecycle=disabled
+  elif migration_required; then lifecycle=migration-required; diagnostic migration-required warning 'Legacy identity requires explicit migration'
+  elif [ "$config_ok" = 0 ] || [ ! -x "$TAILSCALED_BIN" ]; then lifecycle=failed
+  elif [ "$daemon" = running ]; then
+    lifecycle=running
+    backend=$(printf '%s' "$tailscale_status" | json_read backend 2>/dev/null)
+    if [ "$supervisor" != running ] || [ "$web" != running ] || [ "$DATA_PLANE" != running ] || [ -n "$health" ]; then lifecycle=degraded; fi
+    [ "$web" = running ] || diagnostic web-unavailable warning 'Official loopback web panel is not ready'
+    [ "$supervisor" = running ] || diagnostic supervisor-unavailable warning 'Runtime supervision is not running'
+  elif [ "$saved" = starting ]; then lifecycle=starting
+  elif [ "$saved" = failed ] || [ "$(sed -n '1p' "$RUN_DIR/wanted" 2>/dev/null)" = 1 ]; then
+    lifecycle=failed; diagnostic daemon-stopped error 'Runtime is requested but the owned daemon is stopped'
+  fi
+  if [ -f "$RUN_DIR/activation-failure" ]; then diagnostic activation-failed error 'Runtime activation failed; inspect retained runtime versions'; fi
+  if [ -f "$TS_DIR/migration-awaiting-enable" ]; then diagnostic migration-awaiting-enable info 'Migrated identity is preserved; explicit enable or start is required'; fi
+  if [ -f "$RUN_DIR/recovery-failure" ]; then diagnostic recovery-backoff warning 'Owned process recovery is retrying with bounded backoff'; fi
+  [ -x "$TAILSCALED_BIN" ] || diagnostic bundle-missing error 'Runtime daemon executable is missing'
+  module_version=$(version_of "$BUNDLE_DIR")
+  engine_version=$(bounded "$KST_CLI_TIMEOUT" "$TAILSCALE_BIN" version 2>/dev/null | head -n 1 | redact)
+  printf '{"schemaVersion":2,"enabled":%s,"mode":"%s","lifecycle":"%s",' "$enabled" "$MODE" "$lifecycle"
+  printf '"webListen":"%s",' "$(json_escape "$WEB_LISTEN")"
+  printf '"moduleVersion":"%s","tailscaleVersion":"%s",' "$(json_escape "$module_version")" "$(json_escape "$engine_version")"
+  printf '"components":{"supervisor":"%s","daemon":"%s","dataPlane":"%s","web":"%s"},' "$supervisor" "$daemon" "$DATA_PLANE" "$web"
+  printf '"runtime":{"activeVersion":'; version_json "$BUNDLE_DIR"
+  printf ',"stagedVersion":'; version_json "$KST_STAGED_DIR"
+  printf ',"previousVersion":'; version_json "$TS_DIR/previous"
+  printf '},"tailscale":%s,"prefs":%s,"diagnostics":[%s]}\n' "$tailscale_status" "$tailscale_prefs" "$DIAGNOSTICS"
+}
 
-  printf '{'
-  printf '"enabled":%s,' "$enabled"
-  printf '"mode":"%s",' "$(json_escape "$MODE")"
-  printf '"moduleVersion":"%s",' "$(json_escape "$module_version")"
-  printf '"tailscaleVersion":"%s",' "$(json_escape "$tailscale_version")"
-  printf '"components":{"supervisor":"%s","daemon":"%s","dataPlane":"%s","web":"%s"},' "$supervisor" "$daemon" "$data_plane" "$web"
-  printf '"tailscale":'
-  json_object_or_null "$tailscale_status"
-  printf ',"prefs":'
-  json_object_or_null "$tailscale_prefs"
-  printf '}\n'
+runtime_logs() {
+  local file
+  for file in "$LOG_DIR/supervisor.log" "$LOG_DIR/tailscaled.log" "$LOG_DIR/web.log" "$LOG_DIR/tunnel.log"; do
+    [ -f "$file" ] || continue
+    printf '=== %s ===\n' "${file##*/}"
+    tail -c 32768 "$file" | tail -n 100 | redact
+  done
 }
 
 case "$1" in
-  enable) runtime_enable ;;
-  disable) runtime_disable ;;
-  toggle)
-    if module_disabled; then runtime_enable; else runtime_disable; fi
-    ;;
-  start) runtime_start ;;
-  stop) runtime_stop ;;
-  restart)
-    runtime_stop >/dev/null
-    module_disabled && { echo "Tailscale module is disabled"; exit 1; }
-    runtime_start
-    ;;
-  status)
-    if module_disabled; then state=disabled; elif supervisor_health; then state=running; else state=stopped; fi
-    echo "Tailscale module: $state"
-    "$DAEMON_SCRIPT" health >/dev/null 2>&1 && echo "tailscaled: running" || echo "tailscaled: stopped"
-    "$WEB_SCRIPT" health >/dev/null 2>&1 && echo "local web: running" || echo "local web: stopped"
-    ;;
+  enable) with_control_lock runtime_enable ;;
+  disable) with_control_lock runtime_disable ;;
+  toggle) with_control_lock runtime_toggle ;;
+  start) with_control_lock runtime_start ;;
+  stop) with_control_lock runtime_stop ;;
+  restart) with_control_lock runtime_restart ;;
+  status) status_json ;;
   status-json) status_json ;;
-  logs)
-    for file in "$LOG_DIR/supervisor.log" "$LOG_DIR/tailscaled.log" "$LOG_DIR/web.log" "$LOG_DIR/tunnel.log"; do
-      [ -f "$file" ] || continue
-      echo "===== ${file##*/} ====="
-      tail -n 300 "$file"
-    done
-    ;;
-  web-restart)
-    "$WEB_SCRIPT" stop
-    "$WEB_SCRIPT" start
-    ;;
-  *)
-    echo "usage: tailscale-service {enable|disable|toggle|start|stop|restart|status|status-json|logs|web-restart}" >&2
-    exit 2
-    ;;
+  logs) runtime_logs ;;
+  diagnostics) status_json; runtime_logs ;;
+  web-restart) with_control_lock web_restart ;;
+  *) echo 'usage: tailscale-service {enable|disable|toggle|start|stop|restart|status|status-json|logs|web-restart|diagnostics}' >&2; exit 2 ;;
 esac

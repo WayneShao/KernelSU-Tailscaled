@@ -1,34 +1,33 @@
 #!/system/bin/sh
+# shellcheck disable=SC3043
 SCRIPT_DIR=${0%/*}
 . "$SCRIPT_DIR/common.sh"
-load_config || exit 1
 
-web_health() {
-  pid=$(read_pid "$WEB_PID") || return 1
-  pid_matches "$pid" "$TAILSCALE_BIN" "--socket=$SOCKET_FILE" && tcp_ready "$WEB_LISTEN"
+web_health() { web_running && tcp_ready "$WEB_LISTEN"; }
+web_stop() {
+  stop_owned "$WEB_PID" "$TAILSCALE_BIN" "--socket=$SOCKET_FILE" || return 1
+  stop_logger web
 }
-
 web_start() {
+  load_config || return 1
+  module_disabled && return 1
   web_health && return 0
+  if web_running; then web_stop || return 1; fi
   socket_ready || return 1
-  mkdir -p "$RUN_DIR" "$LOG_DIR"
-  nohup "$TAILSCALE_BIN" --socket="$SOCKET_FILE" web --listen="$WEB_LISTEN" >> "$LOG_DIR/web.log" 2>&1 &
-  pid=$!
-  write_pid "$WEB_PID" "$pid"
-  count=0
-  while [ "$count" -lt 15 ]; do
+  ensure_dirs || return 1
+  launch_logged web "$WEB_PID" "$TAILSCALE_BIN" "--socket=$SOCKET_FILE" "$TAILSCALE_BIN" --socket="$SOCKET_FILE" web --listen="$WEB_LISTEN" || return 1
+  local deadline=$(($(date +%s) + KST_START_TIMEOUT))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
     web_health && return 0
-    pid_matches "$pid" "$TAILSCALE_BIN" "--socket=$SOCKET_FILE" || break
-    sleep 1
-    count=$((count + 1))
+    web_running || break
+    sleep 0.2
   done
-  stop_owned "$WEB_PID" "$TAILSCALE_BIN" "--socket=$SOCKET_FILE"
+  web_stop
   return 1
 }
-
 case "$1" in
-  start) web_start ;;
-  stop) stop_owned "$WEB_PID" "$TAILSCALE_BIN" "--socket=$SOCKET_FILE" ;;
-  health) web_health ;;
-  *) echo "usage: tailscale-web {start|stop|health}" >&2; exit 2 ;;
+  start) with_control_lock web_start ;;
+  stop) with_control_lock web_stop ;;
+  health) load_config && web_health ;;
+  *) echo 'usage: tailscale-web {start|stop|health}' >&2; exit 2 ;;
 esac

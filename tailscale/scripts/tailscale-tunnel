@@ -1,50 +1,57 @@
 #!/system/bin/sh
+# shellcheck disable=SC3043
 SCRIPT_DIR=${0%/*}
 . "$SCRIPT_DIR/common.sh"
-load_config || exit 1
 
 tunnel_health() {
-  [ "$MODE" = "native" ] && return 0
-  pid=$(read_pid "$TUNNEL_PID") || return 1
-  pid_matches "$pid" "$TUNNEL_BIN" && ip link show "$TUN_NAME" >/dev/null 2>&1
+  local status
+  status=$(cli_json status status --json) || return 1
+  data_plane_health "$status"
 }
-
 tunnel_start() {
-  [ "$MODE" = "native" ] && return 0
+  load_config || return 1
+  module_disabled && return 1
+  # Native networking belongs to tailscaled. Missing state is diagnosed, not reset.
+  [ "$MODE" = native ] && return 0
   tunnel_health && return 0
+  owned_alive "$TUNNEL_PID" "$TUNNEL_BIN" && return 1
   [ -x "$TUNNEL_BIN" ] || return 1
-  socks_port=${SOCKS_LISTEN##*:}
-  template="$MODDIR/tailscale/config/hev-socks5-tunnel.yaml"
-  runtime_config="$RUN_DIR/hev-socks5-tunnel.yaml"
-  sed -e "s/name: tailscale0/name: $TUN_NAME/" -e "s/port: 1055/port: $socks_port/" "$template" > "$runtime_config"
-  nohup "$TUNNEL_BIN" "$runtime_config" >> "$LOG_DIR/tunnel.log" 2>&1 &
-  pid=$!
-  write_pid "$TUNNEL_PID" "$pid"
-  count=0
-  while [ "$count" -lt 15 ]; do
+  local template="$BUNDLE_DIR/tailscale/config/hev-socks5-tunnel.yaml" config="$RUN_DIR/hev-socks5-tunnel.yaml" deadline
+  sed -e "s/name: tailscale0/name: $TUN_NAME/" -e "s/port: 1055/port: ${SOCKS_LISTEN##*:}/" "$template" > "$config" || return 1
+  launch_logged tunnel "$TUNNEL_PID" "$TUNNEL_BIN" '' "$TUNNEL_BIN" "$config" || return 1
+  deadline=$(($(date +%s) + KST_START_TIMEOUT))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
     if tunnel_health; then
-      ip route replace 100.64.0.0/10 dev "$TUN_NAME" metric 5
-      return 0
+      # Add only our explicit userspace route; never replace an existing route.
+      if bounded 1 ip route add 100.64.0.0/10 dev "$TUN_NAME" metric 5 >/dev/null 2>&1; then
+        printf '%s\n' "$TUN_NAME" > "$RUN_DIR/userspace-route"
+        return 0
+      fi
+      break
     fi
-    pid_matches "$pid" "$TUNNEL_BIN" || break
-    sleep 1
-    count=$((count + 1))
+    owned_alive "$TUNNEL_PID" "$TUNNEL_BIN" || break
+    sleep 0.2
   done
-  stop_owned "$TUNNEL_PID" "$TUNNEL_BIN"
+  tunnel_stop
   return 1
 }
-
 tunnel_stop() {
-  if [ "$MODE" = "userspace" ] && ip route show 100.64.0.0/10 2>/dev/null | grep -q "dev $TUN_NAME"; then
-    ip route del 100.64.0.0/10 dev "$TUN_NAME" >/dev/null 2>&1 || true
+  local owned_tun
+  # Recorded creation, not current config, establishes route cleanup ownership.
+  if [ -r "$RUN_DIR/userspace-route" ]; then
+    owned_tun=$(sed -n '1p' "$RUN_DIR/userspace-route")
+    case "$owned_tun" in '' | *[!a-zA-Z0-9_.-]*) ;; *)
+      bounded 1 ip route del 100.64.0.0/10 dev "$owned_tun" metric 5 >/dev/null 2>&1 || true ;;
+    esac
+    rm -f "$RUN_DIR/userspace-route"
   fi
-  stop_owned "$TUNNEL_PID" "$TUNNEL_BIN"
+  stop_owned "$TUNNEL_PID" "$TUNNEL_BIN" || return 1
+  stop_logger tunnel || return 1
   rm -f "$RUN_DIR/hev-socks5-tunnel.yaml"
 }
-
 case "$1" in
-  start) tunnel_start ;;
-  stop) tunnel_stop ;;
-  health) tunnel_health ;;
-  *) echo "usage: tailscale-tunnel {start|stop|health}" >&2; exit 2 ;;
+  start) with_control_lock tunnel_start ;;
+  stop) with_control_lock tunnel_stop ;;
+  health) load_config && tunnel_health ;;
+  *) echo 'usage: tailscale-tunnel {start|stop|health}' >&2; exit 2 ;;
 esac
