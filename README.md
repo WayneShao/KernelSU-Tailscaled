@@ -1,3 +1,10 @@
+[![WayneShao - KernelSU-Tailscaled](https://img.shields.io/static/v1?label=WayneShao&message=KernelSU-Tailscaled&color=blue&logo=github)](https://github.com/WayneShao/KernelSU-Tailscaled)
+[![Publish Verified Source Release](https://github.com/WayneShao/KernelSU-Tailscaled/actions/workflows/publish-source.yml/badge.svg)](https://github.com/WayneShao/KernelSU-Tailscaled/actions/workflows/publish-source.yml)
+[![Total downloads](https://img.shields.io/github/downloads/WayneShao/KernelSU-Tailscaled/total)](https://github.com/WayneShao/KernelSU-Tailscaled/releases)
+[![Latest stable release](https://img.shields.io/github/v/release/WayneShao/KernelSU-Tailscaled?color=blue)](https://github.com/WayneShao/KernelSU-Tailscaled/releases/latest)
+[![Open issues](https://img.shields.io/github/issues/WayneShao/KernelSU-Tailscaled)](https://github.com/WayneShao/KernelSU-Tailscaled/issues)
+[![Upstream discussion - Telegram](https://img.shields.io/badge/Upstream%20discussion-Telegram-blue?logo=telegram)](https://t.me/systembinsh/158)
+
 # KernelSU-Tailscaled
 
 Run the official Tailscale daemon on rooted Android without occupying Android's
