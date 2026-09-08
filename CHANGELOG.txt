@@ -1,4 +1,17 @@
-v2.0.0-beta.5 (prerelease)
+v2.0.0
+
+- Promoted the beta.5 runtime to the current stable module release. Runtime,
+  installer, and WebUI code are unchanged; versionCode advances to 20000006.
+- Retired the unused Magisk-Tailscaled v1 release and its update.json channel.
+  Only kernelsu-tailscaled receives ongoing releases and ordinary updates.
+- Existing kernelsu-tailscaled installations upgrade normally with retained
+  identity. Old magisk-tailscaled data uses the documented one-time migration.
+- Stable releases explicitly become GitHub Latest. Release pages use their
+  version-specific notes, keeping migration instructions ahead of historical logs.
+
+Full release log: docs/releases/v2.0.0.md
+
+v2.0.0-beta.5 (historical prerelease)
 
 Published 2026-09-07. Immutable Release:
 https://github.com/WayneShao/KernelSU-Tailscaled/releases/tag/v2.0.0-beta.5

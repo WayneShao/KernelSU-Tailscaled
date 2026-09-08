@@ -31,7 +31,6 @@ class ReleaseBuilderTests(unittest.TestCase):
             "skip_mount": b"\n",
             "LICENSE": b"test license\n",
             "NOTICE": b"test notice\n",
-            "update.json": b"{}\n",
             "META-INF/com/google/android/update-binary": b"#!/sbin/sh\nexit 0\n",
             "META-INF/com/google/android/updater-script": b"#MAGISK\n",
             "webroot/index.html": b"<!doctype html><title>Tailscale</title>\n",

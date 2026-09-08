@@ -17,7 +17,6 @@ ROOT_FILES = (
     "skip_mount",
     "LICENSE",
     "NOTICE",
-    "update.json",
     "update-kernelsu.json",
     "scripts/bundle-lib.sh",
     "scripts/runtime-control.sh",

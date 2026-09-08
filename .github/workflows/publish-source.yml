@@ -89,9 +89,11 @@ jobs:
           if ! release_id=$(gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json databaseId --jq .databaseId); then
             flags=()
             case "$RELEASE_TAG" in *-*) flags+=(--prerelease --latest=false) ;; esac
+            notes_file="docs/releases/$RELEASE_TAG.md"
+            [ -f "$notes_file" ] || notes_file=CHANGELOG.txt
             gh release create "$RELEASE_TAG" dist/*.zip -R "$GITHUB_REPOSITORY" \
               --verify-tag --draft "${flags[@]}" \
-              --title "KernelSU-Tailscaled $RELEASE_TAG" --notes-file CHANGELOG.txt
+              --title "KernelSU-Tailscaled $RELEASE_TAG" --notes-file "$notes_file"
             release_id=$(gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json databaseId --jq .databaseId)
           fi
           case "$release_id" in ''|*[!0-9]*) exit 1 ;; esac
@@ -110,7 +112,12 @@ jobs:
               assert asset['digest'] == 'sha256:' + hashlib.sha256(files[asset['name']].read_bytes()).hexdigest()
           PY
           if [ "$(gh api "$endpoint" --jq .draft)" = true ]; then
-            gh release edit "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --draft=false
+            flags=()
+            case "$RELEASE_TAG" in
+              *-*) flags+=(--prerelease --latest=false) ;;
+              *) flags+=(--prerelease=false --latest) ;;
+            esac
+            gh release edit "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --draft=false "${flags[@]}"
           fi
           test "$(gh api "$endpoint" --jq .immutable)" = true
           for archive in dist/*.zip; do

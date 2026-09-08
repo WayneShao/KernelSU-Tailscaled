@@ -7,12 +7,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class MetadataTests(unittest.TestCase):
-    def test_independent_candidate_identity(self):
+    def test_current_release_identity(self):
         props = dict(line.split('=', 1) for line in (ROOT / 'module.prop').read_text().splitlines() if '=' in line)
         self.assertEqual('kernelsu-tailscaled', props['id'])
         self.assertEqual('KernelSU-Tailscaled', props['name'])
-        self.assertEqual('2.0.0-beta.5', props['version'])
-        self.assertEqual(20000005, int(props['versionCode']))
+        self.assertEqual('2.0.0', props['version'])
+        self.assertEqual(20000006, int(props['versionCode']))
         self.assertIn('/KernelSU-Tailscaled/', props['updateJson'])
         self.assertNotEqual('update.json', props['updateJson'].rsplit('/', 1)[-1])
 
@@ -26,7 +26,9 @@ class MetadataTests(unittest.TestCase):
         self.assertIn('ryukora', authors)
         self.assertIn('ANASFANANI', authors)
 
-    def test_legacy_update_feed_does_not_cross_module_ids(self):
-        meta = json.loads((ROOT / 'update.json').read_text())
-        self.assertEqual('v1.102.3.1', meta['version'])
-        self.assertIn('Magisk-Tailscaled-v1.102.3.1.zip', meta['zipUrl'])
+    def test_retired_feed_is_absent_and_current_feed_matches_release(self):
+        self.assertFalse((ROOT / 'update.json').exists())
+        meta = json.loads((ROOT / 'update-kernelsu.json').read_text())
+        self.assertEqual('v2.0.0', meta['version'])
+        self.assertEqual(20000006, meta['versionCode'])
+        self.assertIn('/v2.0.0/KernelSU-Tailscaled-v2.0.0.zip', meta['zipUrl'])

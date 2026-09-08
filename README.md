@@ -4,7 +4,9 @@ Run the official Tailscale daemon on rooted Android without occupying Android's
 VPN slot. KernelSU-first module with a local WebUI, serialized lifecycle control,
 diagnostic health checks, explicit legacy migration, and verified runtime updates.
 
-**2.0.0-beta.5 is a prerelease, not a stable release or an approved store listing.**
+**[2.0.0 is the current stable release](https://github.com/WayneShao/KernelSU-Tailscaled/releases/latest).**
+The legacy Magisk-Tailscaled v1 release and update channel are retired. Only the
+`kernelsu-tailscaled` module line is maintained. Official store review is separate.
 This is an independent continuation of `ryukora/Magisk-Tailscaled`, not an official
 Tailscale or KernelSU product. The daemon remains the official Tailscale 1.102.3
 binary; this project maintains the Android module integration.
@@ -23,12 +25,12 @@ binary; this project maintains the Android module integration.
 
 ARM64 testing targets are the maintainer's OnePlus PKX110 and Xiaomi nezha.
 Host tests and package validation do not establish broad Android, Magisk,
-APatch, or userspace-tunnel compatibility. See the candidate verification record
+APatch, or userspace-tunnel compatibility. See the verification record
 under `docs/verification` for actual results and remaining limits.
 
 ## Install And Activate
 
-1. Obtain a verified ZIP from [source builds/releases](https://github.com/WayneShao/KernelSU-Tailscaled/actions).
+1. Obtain a ZIP from the [current release](https://github.com/WayneShao/KernelSU-Tailscaled/releases/latest).
    The universal ZIP includes both architectures; an ARM64-only ZIP is also built.
 2. Install the ZIP through KernelSU Manager, or `ksud module install ZIP`.
    The installer verifies the complete bundle, switches the owned runtime, and
@@ -47,8 +49,12 @@ candidate; routine ZIP installation does not need that extra step.
 
 ## Migrate An Existing Login
 
-The changed ID intentionally prevents an implicit upgrade over an old module.
-The old `update.json` remains on the existing v1 release; v2 uses a separate feed.
+Existing `kernelsu-tailscaled` installations, including beta.5, install 2.0.0
+normally and keep their login state. No migration is needed within this module ID.
+
+The old `magisk-tailscaled` ID is retired. Its `update.json` endpoint has been
+removed; it does not offer an automatic cross-ID upgrade. The following is a
+one-time procedure for retained legacy data, not a maintained v1 upgrade channel.
 
 1. Stop the legacy Tailscale service explicitly, then disable the legacy module.
    Do not uninstall it with a legacy uninstall script that deletes its identity.
