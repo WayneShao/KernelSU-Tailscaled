@@ -11,20 +11,26 @@ daemon on rooted Android, without occupying Android's VPN slot. It provides a
 local status WebUI, access to the official loopback panel, serialized lifecycle
 control, isolated login state, and a complete ZIP installer with hot activation.
 
-## Candidate And Verification
+## Release And Verification
 
-- Candidate: `2.0.0-beta.5` (prerelease)
-- Source release: https://github.com/WayneShao/KernelSU-Tailscaled/releases/tag/v2.0.0-beta.5
-- Universal ARM/ARM64 ZIP: https://github.com/WayneShao/KernelSU-Tailscaled/releases/download/v2.0.0-beta.5/KernelSU-Tailscaled-v2.0.0-beta.5.zip
-- Build job: https://github.com/WayneShao/KernelSU-Tailscaled/actions/runs/34106297847/job/101691983943
-- Publication workflow: https://github.com/WayneShao/KernelSU-Tailscaled/actions/runs/34107166975
-- Verification record: https://github.com/WayneShao/KernelSU-Tailscaled/blob/main/docs/verification/2026-09-07-beta.5.md
+- Current stable version: `2.0.0`
+- Source release: https://github.com/WayneShao/KernelSU-Tailscaled/releases/tag/v2.0.0
+- Universal ARM/ARM64 ZIP: https://github.com/WayneShao/KernelSU-Tailscaled/releases/download/v2.0.0/KernelSU-Tailscaled-v2.0.0.zip
+- Build job: https://github.com/WayneShao/KernelSU-Tailscaled/actions/runs/34179076192/job/101914259478
+- Publication verification: https://github.com/WayneShao/KernelSU-Tailscaled/actions/runs/34179419831
+- Release record: https://github.com/WayneShao/KernelSU-Tailscaled/blob/main/docs/releases/v2.0.0.md
+- Runtime verification: https://github.com/WayneShao/KernelSU-Tailscaled/blob/main/docs/verification/2026-09-07-beta.5.md
 
-The same ARM64 ZIP was installed through ksud on PKX110 and nezha, with runtime
-components and the Tailscale backend running afterward. The verification record
-distinguishes these results from final physical WebUI inspection, broader
-compatibility, and multi-day stability, which are not claimed. This is a request
-for manual review of a prerelease project, not a statement that it is stable.
+Version 2.0.0 promotes the beta.5 runtime, installer, and WebUI without changes
+to that code. The beta.5 ARM64 package was installed through ksud on PKX110 and
+nezha with runtime components and the Tailscale backend running afterward.
+The verification record preserves the limits on physical WebUI inspection,
+broader compatibility, and multi-day observation; the stable classification
+does not add unperformed device verification claims.
+
+Only the `kernelsu-tailscaled` module line is maintained. The unused v1 Release
+and update channel are retired. Existing v2 installations upgrade normally;
+retained data under the old module ID uses a one-time manual migration procedure.
 
 ## Provenance And Licensing
 

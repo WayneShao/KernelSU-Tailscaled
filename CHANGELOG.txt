@@ -1,5 +1,8 @@
 v2.0.0
 
+Published 2026-09-08 as the current stable release and GitHub Latest.
+https://github.com/WayneShao/KernelSU-Tailscaled/releases/tag/v2.0.0
+
 - Promoted the beta.5 runtime to the current stable module release. Runtime,
   installer, and WebUI code are unchanged; versionCode advances to 20000006.
 - Retired the unused Magisk-Tailscaled v1 release and its update.json channel.

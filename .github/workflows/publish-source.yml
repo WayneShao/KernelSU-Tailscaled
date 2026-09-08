@@ -121,5 +121,11 @@ jobs:
           fi
           test "$(gh api "$endpoint" --jq .immutable)" = true
           for archive in dist/*.zip; do
-            gh release verify-asset "$RELEASE_TAG" "$archive" -R "$GITHUB_REPOSITORY"
+            attempt=0
+            until gh release verify-asset "$RELEASE_TAG" "$archive" -R "$GITHUB_REPOSITORY"; do
+              attempt=$((attempt + 1))
+              [ "$attempt" -lt 6 ] || exit 1
+              # GitHub may publish the release before its attestation is readable.
+              sleep 5
+            done
           done
