@@ -3,7 +3,6 @@
 [![Total downloads](https://img.shields.io/github/downloads/WayneShao/KernelSU-Tailscaled/total)](https://github.com/WayneShao/KernelSU-Tailscaled/releases)
 [![Latest stable release](https://img.shields.io/github/v/release/WayneShao/KernelSU-Tailscaled?color=blue)](https://github.com/WayneShao/KernelSU-Tailscaled/releases/latest)
 [![Open issues](https://img.shields.io/github/issues/WayneShao/KernelSU-Tailscaled)](https://github.com/WayneShao/KernelSU-Tailscaled/issues)
-[![Upstream discussion - Telegram](https://img.shields.io/badge/Upstream%20discussion-Telegram-blue?logo=telegram)](https://t.me/systembinsh/158)
 
 # KernelSU-Tailscaled
 
