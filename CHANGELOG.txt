@@ -1,3 +1,9 @@
+v2.0.2
+
+Show live service health, Tailscale IPv4, WebUI readiness, and pending reboot
+updates in the KernelSU module description. Keep runtime, update, and details
+controls available as separate actions while an update is staged.
+
 v2.0.1
 
 Fix boot activation after reboot by starting the verified immutable runtime
