@@ -35,7 +35,9 @@ kst_dispatch() {
       existing=$(kst_current) || return 1
       manager_version=$(sed -n 's/^versionCode=//p' "$BUNDLE_DIR/module.prop" 2>/dev/null | head -n 1)
       current_version=$(sed -n 's/^versionCode=//p' "$existing/module.prop" 2>/dev/null | head -n 1)
-      if [ -n "$existing" ] && [ -n "$manager_version" ] && [ "$manager_version" = "$current_version" ]; then
+      manager_digest=$(sha256sum "$BUNDLE_DIR/bundle.sha256" 2>/dev/null | cut -d ' ' -f 1)
+      current_digest=$(sha256sum "$existing/bundle.sha256" 2>/dev/null | cut -d ' ' -f 1)
+      if [ -n "$existing" ] && [ -n "$manager_version" ] && [ "$manager_version" = "$current_version" ] && [ -n "$manager_digest" ] && [ "$manager_digest" = "$current_digest" ]; then
         # Boot starts the verified generation; the manager directory also has
         # UI and metadata files outside the immutable runtime manifest.
         kst_runtime "$existing" start
