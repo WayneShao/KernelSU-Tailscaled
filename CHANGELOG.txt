@@ -1,3 +1,10 @@
+v2.0.4
+
+Finalize fully verified hot updates without an Android reboot. Once the active
+runtime, manager view, staged bundle, WebUI, and service health all match, the
+module removes only its own KernelSU pending-update marker and staged directory.
+Any failed check preserves the normal pending-reboot state.
+
 v2.0.3
 
 Correct the live module summary to report the Tailscale engine version and
