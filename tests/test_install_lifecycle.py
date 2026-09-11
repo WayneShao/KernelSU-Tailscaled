@@ -31,7 +31,9 @@ class InstallLifecycleTests(unittest.TestCase):
     def make_bundle(self, path, code, engine="1.102.3", fail=False):
         path.mkdir(parents=True, exist_ok=True)
         for name in ("control.sh", "scripts/bundle-lib.sh", "scripts/activate-runtime.sh",
-                     "scripts/migrate-legacy.sh", "scripts/runtime-control.sh", "tailscale/scripts/common.sh"):
+                     "scripts/migrate-legacy.sh", "scripts/runtime-control.sh",
+                     "scripts/status-summary.sh", "scripts/hot-finalize.sh",
+                     "tailscale/scripts/common.sh"):
             target = path / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, target)
@@ -141,6 +143,7 @@ class InstallLifecycleTests(unittest.TestCase):
     def test_normal_manager_upgrade_selects_new_generation(self):
         self.run_control("boot")
         self.make_bundle(self.module, 20000002)
+        (self.module / "update").touch()
         self.run_control("boot")
         self.assertIn("versionCode=20000002", (self.active() / "module.prop").read_text())
 
@@ -149,6 +152,7 @@ class InstallLifecycleTests(unittest.TestCase):
         before = self.active()
         (self.module / "engine-version").write_text("1.102.4\n")
         self.manifest(self.module)
+        (self.module / "update").touch()
         self.run_control("boot", ok=False)
         self.assertEqual(before, self.active())
 
@@ -182,6 +186,7 @@ class InstallLifecycleTests(unittest.TestCase):
         self.run_control("boot")
         before = self.active()
         self.make_bundle(self.module, 20000002, fail=True)
+        (self.module / "update").touch()
         self.run_control("boot", ok=False)
         self.assertEqual(before, self.active())
         self.assertTrue((self.state / "run/activation-failure").exists())

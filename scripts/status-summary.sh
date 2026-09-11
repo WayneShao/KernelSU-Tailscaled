@@ -49,4 +49,3 @@ if [ -f "$KST_STAGED_DIR/module.prop" ]; then
 fi
 summary="[$(date '+%H:%M') | $state] Tailscale($(sanitize "$version")) | $(sanitize "$ip") | $ui$pending"
 summary_file "$MODDIR/module.prop" "$summary"
-summary_file "$KST_STAGED_DIR/module.prop" "$summary"

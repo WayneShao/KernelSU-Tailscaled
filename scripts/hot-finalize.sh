@@ -9,6 +9,8 @@ BUNDLE_DIR=${BUNDLE_DIR:-$TS_DIR/current}
 [ -d "$KST_STAGED_DIR" ] && [ ! -L "$KST_STAGED_DIR" ] || exit 0
 [ -f "$BUNDLE_DIR/bundle.sha256" ] && [ -f "$KST_STAGED_DIR/bundle.sha256" ] || exit 0
 cmp -s "$BUNDLE_DIR/bundle.sha256" "$KST_STAGED_DIR/bundle.sha256" || exit 0
+(cd "$BUNDLE_DIR" && sha256sum -c bundle.sha256 >/dev/null 2>&1) || exit 0
+(cd "$KST_STAGED_DIR" && sha256sum -c bundle.sha256 >/dev/null 2>&1) || exit 0
 
 prop() { sed -n "s/^$2=//p" "$1/module.prop" 2>/dev/null | head -n 1; }
 code=$(prop "$BUNDLE_DIR" versionCode)
