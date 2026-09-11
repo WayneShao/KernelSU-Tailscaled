@@ -1,4 +1,5 @@
 #!/system/bin/sh
+# shellcheck disable=SC2317
 
 MODDIR=${MODDIR:-/data/adb/modules/kernelsu-tailscaled}
 TS_DIR=${TS_DIR:-/data/adb/kernelsu-tailscaled}
