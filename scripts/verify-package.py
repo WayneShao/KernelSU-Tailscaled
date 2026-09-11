@@ -20,6 +20,8 @@ REQUIRED_ENTRIES = {
     "scripts/install-runtime.sh",
     "scripts/activate-runtime.sh",
     "scripts/migrate-legacy.sh",
+    "scripts/status-summary.sh",
+    "scripts/hot-finalize.sh",
     "customize.sh",
     "service.sh",
     "uninstall.sh",

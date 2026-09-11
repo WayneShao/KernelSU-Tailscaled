@@ -24,6 +24,7 @@ ROOT_FILES = (
     "scripts/activate-runtime.sh",
     "scripts/migrate-legacy.sh",
     "scripts/status-summary.sh",
+    "scripts/hot-finalize.sh",
 )
 TREE_DIRS = ("META-INF", "tailscale", "webroot")
 TEXT_SUFFIXES = {

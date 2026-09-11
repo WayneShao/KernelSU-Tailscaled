@@ -48,7 +48,8 @@ load_config || true
 while :; do
   with_control_lock reconcile
   result=$?
-  sh "$KST_ACTIVE_DIR/scripts/status-summary.sh" >/dev/null 2>&1 || true
+  sh "$BUNDLE_DIR/scripts/hot-finalize.sh" >/dev/null 2>&1 || true
+  sh "$BUNDLE_DIR/scripts/status-summary.sh" >/dev/null 2>&1 || true
   case "$result" in
     10) exit 0 ;;
     11)

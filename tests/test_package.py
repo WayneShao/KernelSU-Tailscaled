@@ -55,6 +55,8 @@ def good_entries() -> dict[str, bytes]:
             "scripts/install-runtime.sh": b"#!/system/bin/sh\nexit 0\n",
             "scripts/activate-runtime.sh": b"#!/system/bin/sh\nexit 0\n",
             "scripts/migrate-legacy.sh": b"#!/system/bin/sh\nexit 0\n",
+            "scripts/status-summary.sh": b"#!/system/bin/sh\nexit 0\n",
+            "scripts/hot-finalize.sh": b"#!/system/bin/sh\nexit 0\n",
             "customize.sh": b"#!/system/bin/sh\nexit 0\n",
             "META-INF/com/google/android/update-binary": b"#!/system/bin/sh\nexit 0\n",
             "META-INF/com/google/android/updater-script": b"#MAGISK\n",

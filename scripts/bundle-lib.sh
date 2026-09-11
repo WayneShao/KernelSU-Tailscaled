@@ -37,6 +37,7 @@ kst_verify_bundle() (
   ' "$root/bundle.sha256" || { kst_error invalid-bundle-manifest; exit 1; }
   for required in module.prop engine-version control.sh bin/tailscale bin/tailscaled \
     scripts/bundle-lib.sh scripts/runtime-control.sh scripts/activate-runtime.sh scripts/migrate-legacy.sh \
+    scripts/status-summary.sh scripts/hot-finalize.sh \
     tailscale/scripts/common.sh tailscale/scripts/tailscale-service; do
     grep -q "  $required\$" "$root/bundle.sha256" || { kst_error incomplete-bundle; exit 1; }
   done
