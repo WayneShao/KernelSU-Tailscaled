@@ -62,3 +62,6 @@ kst_dispatch() {
 
 [ "$#" -eq 1 ] || { kst_error one-command-required; exit 2; }
 with_control_lock kst_dispatch "$1"
+result=$?
+sh "$BUNDLE_DIR/scripts/status-summary.sh" >/dev/null 2>&1 || true
+exit "$result"

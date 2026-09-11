@@ -84,7 +84,7 @@ export function renderDashboard(root: HTMLElement, status: RuntimeStatus): void 
 
   const actions = document.createElement("nav");
   actions.className = "primary-actions";
-  actions.setAttribute("aria-label", "模块操作");
+  actions.setAttribute("aria-label", "运行控制");
   const migrationRequired = status.lifecycle === "migration-required" || status.diagnostics.some((item) => item.code === "migration-required");
   const awaitingEnable = status.diagnostics.some((item) => item.code === "migration-awaiting-enable");
   const enable = !status.enabled || awaitingEnable;
@@ -93,6 +93,18 @@ export function renderDashboard(root: HTMLElement, status: RuntimeStatus): void 
   addButton(actions, "copy-ip", "复制 IP", "复制 Tailscale IPv4 地址").disabled = status.ipv4 === null;
   addButton(actions, "restart", "重启服务", "重启 Tailscale 模块服务").disabled = !status.enabled || migrationRequired || awaitingEnable;
   root.append(actions);
+
+  const updateControls = document.createElement("section");
+  appendText(updateControls, "h2", "更新控制");
+  const updateFacts = document.createElement("dl");
+  addFact(updateFacts, "当前运行时", status.runtime.activeVersion ?? "未知");
+  addFact(updateFacts, "待应用版本", status.runtime.stagedVersion ?? "无");
+  updateControls.append(updateFacts);
+  if (status.runtime.stagedVersion) {
+    appendText(updateControls, "p", "更新已暂存；模块文件将在 Android 重启后完成切换。", "notice");
+    addButton(updateControls, "apply-staged", "应用暂存更新", "应用暂存更新");
+  }
+  root.append(updateControls);
 
   if (migrationRequired || status.diagnostics.length > 0 || status.health.length > 0) {
     const warnings = document.createElement("section");
@@ -146,7 +158,6 @@ export function renderDashboard(root: HTMLElement, status: RuntimeStatus): void 
   addFact(versionFacts, "待应用运行时", status.runtime.stagedVersion ?? "无");
   addFact(versionFacts, "上一运行时", status.runtime.previousVersion ?? "无");
   versions.append(versionFacts);
-  if (status.runtime.stagedVersion) addButton(versions, "apply-staged", "应用暂存运行时", "应用暂存运行时");
   root.append(versions);
 
   const secondary = document.createElement("nav");
@@ -155,7 +166,7 @@ export function renderDashboard(root: HTMLElement, status: RuntimeStatus): void 
   addButton(secondary, "logs", "日志", "查看最近日志");
   addButton(secondary, "diagnostics", "诊断记录", "查看诊断记录");
   addButton(secondary, "migration-status", "迁移状态", "查看迁移状态");
-  addButton(secondary, "open-panel", "打开完整面板", "打开 Tailscale 完整面板").disabled = migrationRequired || awaitingEnable || !status.enabled;
+  addButton(secondary, "open-panel", "打开完整面板", "打开 Tailscale 完整面板").disabled = migrationRequired || awaitingEnable;
   root.append(secondary);
 }
 
