@@ -32,7 +32,14 @@ kst_dispatch() {
       [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ] || return 0
       [ ! -f "$TS_DIR/migration-awaiting-enable" ] || return 0
       kst_require_identity_choice || return 1
-      kst_prepare_manager
+      existing=$(kst_current) || return 1
+      if [ -n "$existing" ]; then
+        # Boot starts the verified generation; the manager directory also has
+        # UI and metadata files outside the immutable runtime manifest.
+        kst_runtime "$existing" start
+      else
+        kst_prepare_manager
+      fi
       ;;
     start|enable|restart|toggle)
       kst_require_identity_choice || return 1
