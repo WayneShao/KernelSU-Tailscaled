@@ -33,7 +33,9 @@ kst_dispatch() {
       [ ! -f "$TS_DIR/migration-awaiting-enable" ] || return 0
       kst_require_identity_choice || return 1
       existing=$(kst_current) || return 1
-      if [ -n "$existing" ]; then
+      manager_version=$(sed -n 's/^versionCode=//p' "$BUNDLE_DIR/module.prop" 2>/dev/null | head -n 1)
+      current_version=$(sed -n 's/^versionCode=//p' "$existing/module.prop" 2>/dev/null | head -n 1)
+      if [ -n "$existing" ] && [ -n "$manager_version" ] && [ "$manager_version" = "$current_version" ]; then
         # Boot starts the verified generation; the manager directory also has
         # UI and metadata files outside the immutable runtime manifest.
         kst_runtime "$existing" start
