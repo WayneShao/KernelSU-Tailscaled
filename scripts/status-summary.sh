@@ -24,7 +24,7 @@ sanitize() {
   printf '%s' "$1" | tr '\r\n|' '   ' | cut -c 1-48
 }
 
-version=$(sed -n 's/^version=//p' "$MODDIR/module.prop" 2>/dev/null | head -n 1)
+version=$(sed -n '1p' "$TS_DIR/current/engine-version" 2>/dev/null)
 lifecycle=$(sed -n '1p' "$TS_DIR/run/lifecycle" 2>/dev/null)
 [ -n "$lifecycle" ] || lifecycle=unknown
 case "$lifecycle" in
@@ -35,10 +35,9 @@ case "$lifecycle" in
   *) state="service $lifecycle" ;;
 esac
 ip='not ready'
-cli="$MODDIR/tailscale/scripts/tailscale"
-[ -x "$cli" ] || cli="$TS_DIR/current/tailscale/scripts/tailscale"
+cli="$TS_DIR/current/bin/tailscale"
 if [ -x "$cli" ]; then
-  candidate=$($cli ip -4 2>/dev/null | head -n 1)
+  candidate=$($cli --socket="$TS_DIR/run/tailscaled.sock" ip -4 2>/dev/null | head -n 1)
   case "$candidate" in [0-9]*.[0-9]*.[0-9]*.[0-9]*) ip=$candidate ;; esac
 fi
 ui='UI unavailable'

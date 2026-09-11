@@ -1,3 +1,8 @@
+v2.0.3
+
+Correct the live module summary to report the Tailscale engine version and
+query IPv4 through the active runtime socket.
+
 v2.0.2
 
 Show live service health, Tailscale IPv4, WebUI readiness, and pending reboot

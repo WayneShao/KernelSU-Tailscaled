@@ -11,8 +11,8 @@ class MetadataTests(unittest.TestCase):
         props = dict(line.split('=', 1) for line in (ROOT / 'module.prop').read_text().splitlines() if '=' in line)
         self.assertEqual('kernelsu-tailscaled', props['id'])
         self.assertEqual('KernelSU-Tailscaled', props['name'])
-        self.assertEqual('2.0.2', props['version'])
-        self.assertEqual(20000008, int(props['versionCode']))
+        self.assertEqual('2.0.3', props['version'])
+        self.assertEqual(20000009, int(props['versionCode']))
         self.assertIn('/KernelSU-Tailscaled/', props['updateJson'])
         self.assertNotEqual('update.json', props['updateJson'].rsplit('/', 1)[-1])
 
@@ -29,6 +29,6 @@ class MetadataTests(unittest.TestCase):
     def test_retired_feed_is_absent_and_current_feed_matches_release(self):
         self.assertFalse((ROOT / 'update.json').exists())
         meta = json.loads((ROOT / 'update-kernelsu.json').read_text())
-        self.assertEqual('v2.0.2', meta['version'])
-        self.assertEqual(20000008, meta['versionCode'])
-        self.assertIn('/v2.0.2/KernelSU-Tailscaled-v2.0.2.zip', meta['zipUrl'])
+        self.assertEqual('v2.0.3', meta['version'])
+        self.assertEqual(20000009, meta['versionCode'])
+        self.assertIn('/v2.0.3/KernelSU-Tailscaled-v2.0.3.zip', meta['zipUrl'])
