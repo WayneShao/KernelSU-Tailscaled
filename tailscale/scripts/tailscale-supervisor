@@ -1,7 +1,6 @@
 #!/system/bin/sh
 SCRIPT_DIR=${0%/*}
 . "$SCRIPT_DIR/common.sh"
-. "$KST_ACTIVE_DIR/scripts/status-summary.sh" 2>/dev/null || true
 ensure_dirs || exit 1
 exec 9>&-
 unset KST_LOCK_HELD
