@@ -10,7 +10,7 @@ Run the official Tailscale daemon on rooted Android without occupying Android's
 VPN slot. KernelSU-first module with a local WebUI, serialized lifecycle control,
 diagnostic health checks, explicit legacy migration, and verified runtime updates.
 
-**[2.0.0 is the current stable release](https://github.com/WayneShao/KernelSU-Tailscaled/releases/latest).**
+**[2.0.5 is the current stable release](https://github.com/WayneShao/KernelSU-Tailscaled/releases/latest).**
 The legacy Magisk-Tailscaled v1 release and update channel are retired. Only the
 `kernelsu-tailscaled` module line is maintained. Official store review is separate.
 This is an independent continuation of `ryukora/Magisk-Tailscaled`, not an official
@@ -53,9 +53,22 @@ to load its new assets. Normal KernelSU module promotion remains compatible with
 the selected runtime. **Apply staged runtime** is also available for a staged
 candidate; routine ZIP installation does not need that extra step.
 
+## Update The Tailscale Engine
+
+Open **Tailscale engine update** in Details. Check for an official stable
+version, download and verify it, then apply when ready. Downloading does not
+interrupt the service; applying briefly restarts it while retaining your login
+and settings. No Android reboot is requested.
+
+Downloads use the official HTTPS server and its SHA-256 checksum. Failed
+activation restores the previous engine and saved identity. Pending recovery
+respects a later stop/disable. Updated engines persist across module installs
+and boot; a newer bundled engine takes precedence. See the
+[v2.0.5 release notes](docs/releases/v2.0.5.md) for validation and limits.
+
 ## Migrate An Existing Login
 
-Existing `kernelsu-tailscaled` installations, including beta.5, install 2.0.0
+Existing `kernelsu-tailscaled` installations, including beta.5, install the current release
 normally and keep their login state. No migration is needed within this module ID.
 
 The old `magisk-tailscaled` ID is retired. Its `update.json` endpoint has been

@@ -19,6 +19,12 @@ kst_private_root || exit 1
 . "$BUNDLE_DIR/scripts/activate-runtime.sh"
 
 kst_install_complete() (
+  # Finish a pending engine rollback using the installed controller before
+  # activating a different module generation or touching its manager view.
+  existing=$(kst_current) || exit 1
+  if [ -d "$TS_DIR/engine-transaction" ] && [ -n "$existing" ]; then
+    BUNDLE_DIR="$existing" sh "$existing/scripts/runtime-control.sh" engine-recover 9>&9 || exit 1
+  fi
   prepared=$(mktemp -d "$MODDIR/.install.XXXXXX") || exit 1
   # Invoked indirectly by the exit and signal traps.
   # shellcheck disable=SC2317

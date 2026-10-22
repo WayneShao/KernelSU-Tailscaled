@@ -44,6 +44,7 @@ daemon_stop() {
 
 daemon_start() {
   load_config || { log ERROR "$CONFIG_ERROR"; return 1; }
+  if [ "$ENGINE_DIR" != "$BUNDLE_DIR" ]; then engine_verify "$ENGINE_DIR" || return 1; fi
   module_disabled && return 1
   if daemon_running; then daemon_health && initialize_hostname; return $?; fi
   stop_owned "$DAEMON_PID" "$TAILSCALED_BIN" "--socket=$SOCKET_FILE" || return 1

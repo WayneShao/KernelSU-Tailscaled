@@ -10,6 +10,10 @@ export type ModuleAction =
   | "diagnostics"
   | "migration-status"
   | "migrate-legacy"
+  | "engine-status"
+  | "engine-check"
+  | "engine-prepare"
+  | "engine-apply"
   | "apply-staged";
 
 export interface CommandResult {
@@ -30,13 +34,14 @@ const ACTIONS: ReadonlySet<string> = new Set([
   "migration-status",
   "migrate-legacy",
   "apply-staged",
+  "engine-status", "engine-check", "engine-prepare", "engine-apply",
 ]);
 
 function deadlineFor(action: ModuleAction, remainingMs?: number): number {
   if (!ACTIONS.has(action)) {
     throw new Error("Unsupported action");
   }
-  const maximum = ["status-json", "logs", "diagnostics", "migration-status"].includes(action) ? 40_000 : 90_000;
+  const maximum = action === 'engine-prepare' ? 180_000 : ["status-json", "logs", "diagnostics", "migration-status"].includes(action) ? 40_000 : 90_000;
   if (remainingMs !== undefined && (!Number.isFinite(remainingMs) || remainingMs < 2_000)) {
     throw new Error("操作超时，请刷新状态确认结果");
   }

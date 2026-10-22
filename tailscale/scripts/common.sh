@@ -6,7 +6,9 @@ SCRIPT_DIR=$(CDPATH='' cd -- "${SCRIPT_DIR:-${0%/*}}" 2>/dev/null && pwd -P)
 BUNDLE_DIR=${BUNDLE_DIR:-${SCRIPT_DIR%/tailscale/scripts}}
 MODDIR=${MODDIR:-/data/adb/modules/kernelsu-tailscaled}
 TS_DIR=${TS_DIR:-/data/adb/kernelsu-tailscaled}
-BIN_DIR="$BUNDLE_DIR/bin"
+. "$BUNDLE_DIR/tailscale/scripts/engine-lib.sh"
+engine_select || { echo 'Invalid engine selection' >&2; exit 1; }
+BIN_DIR="$ENGINE_DIR/bin"
 CONFIG_DIR="$TS_DIR/config"
 LOG_DIR="$TS_DIR/logs"
 RUN_DIR="$TS_DIR/run"
@@ -14,7 +16,7 @@ STATE_FILE="$TS_DIR/tailscaled.state"
 SOCKET_FILE="$RUN_DIR/tailscaled.sock"
 TAILSCALE_BIN="$BIN_DIR/tailscale"
 TAILSCALED_BIN="$BIN_DIR/tailscaled"
-TUNNEL_BIN="$BIN_DIR/hev-socks5-tunnel"
+TUNNEL_BIN="$BUNDLE_DIR/bin/hev-socks5-tunnel"
 SCRIPT_DIR="$BUNDLE_DIR/tailscale/scripts"
 SUPERVISOR_SCRIPT="$SCRIPT_DIR/tailscale-supervisor"
 DAEMON_SCRIPT="$SCRIPT_DIR/tailscale-daemon"
@@ -133,6 +135,12 @@ load_config() {
       *) CONFIG_ERROR='Unknown configuration key'; return 1 ;;
     esac
   done < "$config"
+  # Official Linux binaries otherwise mark sockets into main, which Android
+  # commonly leaves without a default route. Let upstream discover and bind
+  # the actual outbound interface rather than copying Android routes.
+  if [ "$MODE" = native ] && is_android_runtime; then
+    export TS_FORCE_LINUX_BIND_TO_DEVICE=true
+  fi
   return 0
 }
 
@@ -316,7 +324,7 @@ diagnostic() {
 
 is_android_runtime() {
   local sdk
-  sdk=$(getprop ro.build.version.sdk 2>/dev/null) || return 1
+  sdk=$(bounded 1 getprop ro.build.version.sdk 2>/dev/null) || return 1
   case "$sdk" in '' | *[!0-9]*) return 1 ;; esac
 }
 
@@ -325,15 +333,14 @@ android_login_diagnostics() {
   [ "$MODE" = native ] || return 0
   is_android_runtime || return 0
   backend=$(printf '%s' "$status" | json_read backend) || return 0
-  case "$backend" in NeedsLogin | NeedsMachineAuth | NoState | Starting) ;; *) return 0 ;; esac
+  case "$backend" in NeedsLogin | NeedsMachineAuth) ;; *) return 0 ;; esac
 
   if [ -f "$LOG_DIR/tailscaled.log" ] && tail -c 32768 "$LOG_DIR/tailscaled.log" 2>/dev/null |
       grep -F 'on [::1]:53' >/dev/null 2>&1; then
     diagnostic android-resolver-unavailable error 'Android DNS resolution is unavailable; verify the bundled engine and dnsproxyd access'
   fi
-  if ! bounded 1 ip route get 1.1.1.1 mark 0x80000 >/dev/null 2>&1; then
-    diagnostic android-marked-route-unreachable error 'Android cannot route Tailscale bypass-mark traffic; use userspace mode instead of adding a persistent network-specific route'
-  fi
+  # Native Android sockets use SO_BINDTODEVICE, not the bypass mark. Testing
+  # the unused marked path here would diagnose a route the daemon never uses.
 }
 
 native_health() {

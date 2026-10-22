@@ -1,13 +1,14 @@
-v2.0.5-beta.1
+v2.0.5
 
-- Upgrade the bundled official Tailscale engine from 1.102.3 to 1.104.2. This
-  includes upstream standalone-Android DNS, network-monitor, and CA support for
-  raw binaries running without Android's VPN app integration.
-- Diagnose the two observed first-login failure modes separately: loopback DNS
-  fallback in the daemon log and an unreachable `0x80000` bypass-mark route.
-- Keep route inspection read only. The module does not install a copied default
-  route, hard-code a control-plane address, or silently switch networking mode.
-- Keep v2.0.4 as the stable update-feed target while this candidate is tested.
+- Fix native Android control/UDP socket routing using the official interface
+  binding option; bundle Tailscale 1.104.2 with standalone Android DNS support.
+- Add WebUI engine check, verified download, and explicit apply without a module
+  reinstall or Android reboot. Preserve identity and configuration.
+- Recover failed/interrupted engine activation, preserving later stop/disable
+  intent. Validate external engines and reject normal updater downgrades.
+- Verify a real Xiaomi 1.102.3 -> 1.104.2 upgrade and OnePlus engine persistence
+  across module reinstall and boot. See docs/releases/v2.0.5.md for details.
+- Earlier v2.0.5-beta.1 was withdrawn; later candidates were local test builds.
 
 v2.0.4
 

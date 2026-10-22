@@ -23,6 +23,10 @@ async function mockBridge(page: Page, status: unknown) {
         if (fixture.hanging.includes(action)) return;
         let output = "done";
         if (action === "status-json") output = JSON.stringify(fixture.status);
+        if (action === 'engine-status') output = '{"current":"1.104.2","latest":"","staged":""}';
+        if (action === 'engine-check') output = '{"current":"1.104.2","latest":"1.106.0","staged":""}';
+        if (action === 'engine-prepare') output = '{"current":"1.104.2","latest":"1.106.0","staged":"1.106.0"}';
+        if (action === 'engine-apply') output = '{"current":"1.106.0","latest":"1.106.0","staged":""}';
         if (action === "logs") output = '<script>bad()</script>\nfixture log line';
         if (action === "diagnostics") output = `${JSON.stringify(fixture.status)}\nredacted log`;
         if (action === "migration-status") output = '{"state":"migration-required"}';
@@ -53,6 +57,22 @@ async function checkLayout(page: Page) {
   }))).toBe(true);
   await expect(page.locator("i[data-lucide]")).toHaveCount(0);
 }
+
+test('engine update requires explicit apply after download', async ({ page }) => {
+  await mockBridge(page, running);
+  await page.locator('[data-action=engine-page]').click();
+  await expect(page.getByRole('heading', {name: 'Tailscale 引擎更新'})).toBeVisible();
+  await page.locator('[data-action=engine-check]').click();
+  await expect(page.locator('[data-action=engine-prepare]')).toBeVisible();
+  await page.locator('[data-action=engine-prepare]').click();
+  await expect(page.locator('[data-action=engine-apply]')).toBeVisible();
+  await checkLayout(page);
+  expect(await page.evaluate(() => window.__kst.commands)).not.toContain('engine-apply');
+  page.once('dialog', dialog => dialog.accept());
+  await page.locator('[data-action=engine-apply]').click();
+  await expect(page.locator('[data-action=engine-apply]')).toHaveCount(0);
+  await expect(page.getByText('重新下载并校验')).toBeVisible();
+});
 
 test("connected status and stable toolbar", async ({ page }, info) => {
   const errors: string[] = [];

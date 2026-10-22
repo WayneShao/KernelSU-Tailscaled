@@ -17,7 +17,8 @@ import {
 import { toast } from "kernelsu";
 import { runAction, type ModuleAction } from "./api";
 import { parseRuntimeStatus, type RuntimeStatus } from "./model";
-import { renderDashboard, renderLogs, renderMessage } from "./render";
+import { renderDashboard, renderLogs, renderMessage, renderEngineUpdate } from "./render";
+import { parseEngineStatus } from './engine';
 import "./styles.css";
 
 const applicationRoot = document.querySelector<HTMLElement>("#app");
@@ -107,12 +108,25 @@ async function openPanel(): Promise<void> {
 
 async function handleAction(action: string): Promise<void> {
   if (busy) return;
+  if (action === 'engine-apply' && !window.confirm('应用已校验的 Tailscale 引擎？服务会短暂重启，登录与配置保留。')) return;
   if (action === "migrate-legacy" && !window.confirm("迁移旧模块身份？\n旧模块须已禁用或移除，且旧、新运行时均已停止；新身份必须不存在。旧文件将保留，迁移后等待单独启用。")) return;
   if (action === "apply-staged" && !window.confirm("应用暂存运行时？\n当前运行时将停止并切换至已验证的暂存版本。此操作更新运行时，不更新当前管理器中的 WebUI，也不重启设备。")) return;
   setBusy(true);
   announce("处理中");
   try {
     switch (action) {
+      case 'engine-page':
+      case 'engine-status':
+      case 'engine-check':
+      case 'engine-prepare':
+      case 'engine-apply': {
+        const command = action === 'engine-page' ? 'engine-status' : action;
+        announce(action === 'engine-prepare' ? '正在下载并校验，当前服务继续运行…' : '处理中');
+        const engine = parseEngineStatus(await execute(command));
+        renderEngineUpdate(root, engine);
+        drawIcons();
+        break;
+      }
       case "refresh":
       case "back":
         await refreshStatus();

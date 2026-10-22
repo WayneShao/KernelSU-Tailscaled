@@ -24,6 +24,24 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("dashboard actions", () => {
+  it('checks and prepares engines through fixed actions without applying automatically', async () => {
+    await boot();
+    vi.mocked(exec).mockResolvedValueOnce(result('{"current":"1.104.2","latest":"","staged":""}'));
+    button('engine-page').click();
+    await settled();
+    vi.mocked(exec).mockResolvedValueOnce(result('{"current":"1.104.2","latest":"1.106.0","staged":""}'));
+    button('engine-check').click();
+    await settled();
+    vi.mocked(exec).mockResolvedValueOnce(result('{"current":"1.104.2","latest":"1.106.0","staged":"1.106.0"}'));
+    button('engine-prepare').click();
+    await settled();
+    expect(button('engine-apply')).not.toBeNull();
+    expect(vi.mocked(exec).mock.calls.some(([command]) => command.endsWith(' engine-apply'))).toBe(false);
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    button('engine-apply').click();
+    await settled();
+    expect(vi.mocked(exec).mock.calls.some(([command]) => command.endsWith(' engine-apply'))).toBe(false);
+  });
   it("restores valid buttons after a failing command without losing the dashboard", async () => {
     await boot();
     vi.mocked(exec).mockResolvedValueOnce(result("restart failed", 1));

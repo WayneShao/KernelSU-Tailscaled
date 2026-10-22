@@ -337,20 +337,43 @@ class RuntimeBehaviorTests(unittest.TestCase):
         self.assertIn('android-resolver-unavailable', diagnostics)
         self.assertIn('DNS', diagnostics['android-resolver-unavailable']['message'])
 
-    def test_android_login_reports_unusable_bypass_mark_without_mutating_routes(self):
+    def test_android_native_uses_interface_binding_without_mark_route_dependency(self):
         self.write_status(backend='NeedsLogin', peers=False)
         (self.root / 'android-runtime').touch()
         (self.root / 'marked-route-fail').touch()
         self.start()
         diagnostics = {item['code']: item for item in self.status()['diagnostics']}
-        self.assertIn('android-marked-route-unreachable', diagnostics)
-        self.assertIn('userspace', diagnostics['android-marked-route-unreachable']['message'])
-        calls = (self.root / 'ip-calls').read_text().splitlines()
-        self.assertIn('route get 1.1.1.1 mark 0x80000', calls)
+        self.assertNotIn('android-marked-route-unreachable', diagnostics)
+        environment = json.loads((self.root / 'daemon-environment.json').read_text())
+        self.assertEqual('true', environment['bind'])
+        calls_file = self.root / 'ip-calls'
+        calls = calls_file.read_text().splitlines() if calls_file.exists() else []
+        self.assertNotIn('route get 1.1.1.1 mark 0x80000', calls)
         self.assertFalse(any(' route add ' in f' {call} ' or ' route replace ' in f' {call} '
                              for call in calls))
 
+    def test_non_android_keeps_upstream_socket_selection(self):
+        self.start()
+        environment = json.loads((self.root / 'daemon-environment.json').read_text())
+        self.assertIsNone(environment['bind'])
+
     def test_running_android_does_not_treat_mark_probe_as_login_failure(self):
+        (self.root / 'android-runtime').touch()
+        (self.root / 'marked-route-fail').touch()
+        self.start()
+        codes = {item['code'] for item in self.status()['diagnostics']}
+        self.assertNotIn('android-marked-route-unreachable', codes)
+
+    def test_authenticated_android_starting_does_not_report_login_route_failure(self):
+        self.write_status(backend='Starting', peers=False)
+        (self.root / 'android-runtime').touch()
+        (self.root / 'marked-route-fail').touch()
+        self.start()
+        codes = {item['code'] for item in self.status()['diagnostics']}
+        self.assertNotIn('android-marked-route-unreachable', codes)
+
+    def test_android_no_state_during_startup_does_not_report_route_failure(self):
+        self.write_status(backend='NoState', peers=False)
         (self.root / 'android-runtime').touch()
         (self.root / 'marked-route-fail').touch()
         self.start()

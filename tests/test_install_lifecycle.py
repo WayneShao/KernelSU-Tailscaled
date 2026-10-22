@@ -33,7 +33,8 @@ class InstallLifecycleTests(unittest.TestCase):
         for name in ("control.sh", "scripts/bundle-lib.sh", "scripts/activate-runtime.sh",
                      "scripts/migrate-legacy.sh", "scripts/runtime-control.sh",
                      "scripts/status-summary.sh", "scripts/hot-finalize.sh",
-                     "tailscale/scripts/common.sh"):
+                     "tailscale/scripts/common.sh", "tailscale/scripts/engine-lib.sh",
+                     "tailscale/scripts/engine-update.sh"):
             target = path / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, target)
@@ -70,6 +71,21 @@ class InstallLifecycleTests(unittest.TestCase):
         else:
             self.assertNotEqual(0, result.returncode, result.stderr + result.stdout)
         return result
+
+    def test_explicit_stop_cancels_interrupted_engine_restart_before_staged_apply(self):
+        self.run_control('boot')
+        journal = self.state / 'engine-transaction'
+        journal.mkdir()
+        (journal / 'previous').write_text('bundled\n')
+        (journal / 'wanted').write_text('1\n')
+        self.run_control('stop')
+        self.assertTrue((journal / 'no-restart').is_file())
+        self.trace.write_text('')
+        self.make_bundle(self.staged, 20000002)
+        self.run_control('apply-staged')
+        self.assertNotIn(':start', self.trace.read_text())
+        self.assertFalse(journal.exists())
+        self.assertFalse((self.state / 'run/fake-running').exists())
 
     def active(self):
         return (self.state / "current").resolve()

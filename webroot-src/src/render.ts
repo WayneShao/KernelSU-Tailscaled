@@ -1,4 +1,5 @@
 import type { ComponentState, Lifecycle, RuntimeStatus } from "./model";
+import type { EngineStatus } from './engine';
 
 const lifecycleLabels: Record<Lifecycle, string> = {
   disabled: "已禁用", stopped: "已停止", starting: "启动中", running: "运行中",
@@ -100,6 +101,7 @@ export function renderDashboard(root: HTMLElement, status: RuntimeStatus): void 
   addFact(updateFacts, "当前运行时", status.runtime.activeVersion ?? "未知");
   addFact(updateFacts, "待应用版本", status.runtime.stagedVersion ?? "无");
   updateControls.append(updateFacts);
+  addButton(updateControls, 'engine-page', 'Tailscale 引擎更新', '检查和更新官方 Tailscale 引擎');
   if (status.runtime.stagedVersion) {
     appendText(updateControls, "p", "更新已暂存；模块文件将在 Android 重启后完成切换。", "notice");
     addButton(updateControls, "apply-staged", "应用暂存更新", "应用暂存更新");
@@ -168,6 +170,26 @@ export function renderDashboard(root: HTMLElement, status: RuntimeStatus): void 
   addButton(secondary, "migration-status", "迁移状态", "查看迁移状态");
   addButton(secondary, "open-panel", "打开完整面板", "打开 Tailscale 完整面板").disabled = migrationRequired || awaitingEnable;
   root.append(secondary);
+}
+
+export function renderEngineUpdate(root: HTMLElement, status: EngineStatus): void {
+  root.replaceChildren();
+  const header = document.createElement('header');
+  appendText(header, 'h1', 'Tailscale 引擎更新');
+  root.append(header);
+  const section = document.createElement('section');
+  const facts = document.createElement('dl');
+  addFact(facts, '当前引擎', status.current || '未知');
+  addFact(facts, '官方稳定版', status.latest || '尚未检查');
+  addFact(facts, '已校验待安装', status.staged || '无');
+  section.append(facts);
+  appendText(section, 'p', '从 Tailscale 官方下载并校验。应用更新会短暂重启服务，保留登录和配置；设备无需重启。');
+  addButton(section, 'engine-check', '检查更新', '检查官方稳定版');
+  if (status.latest) addButton(section, 'engine-prepare',
+    status.latest === status.current ? '重新下载并校验' : '下载并校验', '下载并校验官方引擎');
+  if (status.staged) addButton(section, 'engine-apply', '应用引擎更新', '应用已校验引擎');
+  addButton(section, 'back', '返回', '返回状态页');
+  root.append(section);
 }
 
 export function renderLogs(root: HTMLElement, logs: string, kind: "logs" | "diagnostics" = "logs"): void {

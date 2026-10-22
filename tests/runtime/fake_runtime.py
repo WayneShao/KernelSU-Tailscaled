@@ -20,6 +20,9 @@ def serve(sock):
         time.sleep(0.1)
 
 if name == 'tailscaled':
+    (root / 'daemon-environment.json').write_text(json.dumps({
+        'bind': os.environ.get('TS_FORCE_LINUX_BIND_TO_DEVICE'),
+    }))
     with (root / 'starts').open('a') as stream:
         stream.write(str(time.monotonic()) + '\n')
     if (root / 'daemon-fail').exists():

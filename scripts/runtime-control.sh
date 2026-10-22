@@ -16,6 +16,7 @@ kst_private_root || exit 1
 . "$BUNDLE_DIR/tailscale/scripts/common.sh"
 . "$BUNDLE_DIR/scripts/activate-runtime.sh"
 . "$BUNDLE_DIR/scripts/migrate-legacy.sh"
+. "$BUNDLE_DIR/tailscale/scripts/engine-update.sh"
 
 kst_dispatch() {
   if [ "$1" != boot ]; then
@@ -25,11 +26,25 @@ kst_dispatch() {
       return $?
     fi
   fi
+  # A later explicit stop must supersede the running intent saved by an
+  # interrupted engine update. A marker leaves the journal metadata intact.
+  if [ -d "$TS_DIR/engine-transaction" ]; then
+    case "$1" in
+      stop|disable) : > "$TS_DIR/engine-transaction/no-restart" || return 1 ;;
+      toggle) if ! module_disabled; then : > "$TS_DIR/engine-transaction/no-restart" || return 1; fi ;;
+    esac
+  fi
   case "$1" in
+    engine-check) engine_check ;;
+    engine-prepare) engine_prepare ;;
+    engine-apply) engine_apply ;;
+    engine-status) engine_status ;;
+    engine-recover) engine_recover ;;
     migration-status) kst_migration_status ;;
     migrate-legacy) kst_migrate_legacy ;;
-    apply-staged) kst_apply_staged ;;
+    apply-staged) engine_recover && kst_apply_staged ;;
     boot)
+      engine_recover || return 1
       [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ] || return 0
       [ ! -f "$TS_DIR/migration-awaiting-enable" ] || return 0
       kst_require_identity_choice || return 1
@@ -47,6 +62,7 @@ kst_dispatch() {
       fi
       ;;
     start|enable|restart|toggle)
+      engine_recover || return 1
       kst_require_identity_choice || return 1
       kst_prepare_initial || return 1
       rm -f "$TS_DIR/migration-awaiting-enable"

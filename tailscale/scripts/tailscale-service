@@ -127,6 +127,7 @@ status_json() {
     lifecycle=failed; diagnostic daemon-stopped error 'Runtime is requested but the owned daemon is stopped'
   fi
   if [ -f "$RUN_DIR/activation-failure" ]; then diagnostic activation-failed error 'Runtime activation failed; inspect retained runtime versions'; fi
+  if [ -d "$TS_DIR/engine-transaction" ]; then diagnostic engine-update-interrupted warning 'Engine update recovery is pending; start the service to restore the previous engine and saved identity'; fi
   if [ -f "$TS_DIR/migration-awaiting-enable" ]; then diagnostic migration-awaiting-enable info 'Migrated identity is preserved; explicit enable or start is required'; fi
   if [ -f "$RUN_DIR/recovery-failure" ]; then diagnostic recovery-backoff warning 'Owned process recovery is retrying with bounded backoff'; fi
   [ -x "$TAILSCALED_BIN" ] || diagnostic bundle-missing error 'Runtime daemon executable is missing'
