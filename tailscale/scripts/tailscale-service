@@ -96,6 +96,7 @@ status_json() {
     fi
     if [ "$tailscale_status" != null ] && [ "$config_ok" = 1 ]; then
       data_plane_health "$tailscale_status" || true
+      android_login_diagnostics "$tailscale_status"
       health=$(printf '%s' "$tailscale_status" | json_read health)
       [ -z "$health" ] || diagnostic upstream-health warning 'Tailscale reports health warnings; see tailscale.Health'
     else DATA_PLANE=unknown

@@ -58,6 +58,9 @@ elif name == 'ip':
     if 'address' in args or 'addr' in args:
         print((root / 'addresses').read_text())
     elif 'route' in args:
+        if 'mark' in args and (root / 'marked-route-fail').exists():
+            print('RTNETLINK answers: Network is unreachable', file=sys.stderr)
+            sys.exit(2)
         print((root / 'routes').read_text())
 elif name == 'nc':
     try:
@@ -68,4 +71,7 @@ elif name == 'nc':
 elif name == 'settings':
     print((root / 'device-name').read_text() if (root / 'device-name').exists() else 'Fixture Phone')
 elif name == 'getprop':
-    print('fixture-product')
+    if args == ['ro.build.version.sdk']:
+        print('36' if (root / 'android-runtime').exists() else '')
+    else:
+        print('fixture-product')

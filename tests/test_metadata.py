@@ -7,12 +7,18 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class MetadataTests(unittest.TestCase):
+    def test_bundled_tailscale_has_standalone_android_support(self):
+        self.assertEqual(
+            'v1.104.2',
+            (ROOT / 'files/VERSION.txt').read_text(encoding='ascii').strip(),
+        )
+
     def test_current_release_identity(self):
         props = dict(line.split('=', 1) for line in (ROOT / 'module.prop').read_text().splitlines() if '=' in line)
         self.assertEqual('kernelsu-tailscaled', props['id'])
         self.assertEqual('KernelSU-Tailscaled', props['name'])
-        self.assertEqual('2.0.4', props['version'])
-        self.assertEqual(20000010, int(props['versionCode']))
+        self.assertEqual('2.0.5-beta.1', props['version'])
+        self.assertEqual(20000011, int(props['versionCode']))
         self.assertIn('/KernelSU-Tailscaled/', props['updateJson'])
         self.assertNotEqual('update.json', props['updateJson'].rsplit('/', 1)[-1])
 
@@ -26,7 +32,7 @@ class MetadataTests(unittest.TestCase):
         self.assertIn('ryukora', authors)
         self.assertIn('ANASFANANI', authors)
 
-    def test_retired_feed_is_absent_and_current_feed_matches_release(self):
+    def test_retired_feed_is_absent_and_stable_feed_ignores_candidate(self):
         self.assertFalse((ROOT / 'update.json').exists())
         meta = json.loads((ROOT / 'update-kernelsu.json').read_text())
         self.assertEqual('v2.0.4', meta['version'])

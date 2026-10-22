@@ -1,3 +1,14 @@
+v2.0.5-beta.1
+
+- Upgrade the bundled official Tailscale engine from 1.102.3 to 1.104.2. This
+  includes upstream standalone-Android DNS, network-monitor, and CA support for
+  raw binaries running without Android's VPN app integration.
+- Diagnose the two observed first-login failure modes separately: loopback DNS
+  fallback in the daemon log and an unreachable `0x80000` bypass-mark route.
+- Keep route inspection read only. The module does not install a copied default
+  route, hard-code a control-plane address, or silently switch networking mode.
+- Keep v2.0.4 as the stable update-feed target while this candidate is tested.
+
 v2.0.4
 
 Finalize fully verified hot updates without an Android reboot. Once the active

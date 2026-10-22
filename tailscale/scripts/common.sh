@@ -314,6 +314,28 @@ diagnostic() {
   DIAGNOSTICS="$DIAGNOSTICS{\"code\":\"$1\",\"severity\":\"$2\",\"message\":\"$(json_escape "$3")\"}"
 }
 
+is_android_runtime() {
+  local sdk
+  sdk=$(getprop ro.build.version.sdk 2>/dev/null) || return 1
+  case "$sdk" in '' | *[!0-9]*) return 1 ;; esac
+}
+
+android_login_diagnostics() {
+  local status="$1" backend
+  [ "$MODE" = native ] || return 0
+  is_android_runtime || return 0
+  backend=$(printf '%s' "$status" | json_read backend) || return 0
+  case "$backend" in NeedsLogin | NeedsMachineAuth | NoState | Starting) ;; *) return 0 ;; esac
+
+  if [ -f "$LOG_DIR/tailscaled.log" ] && tail -c 32768 "$LOG_DIR/tailscaled.log" 2>/dev/null |
+      grep -F 'on [::1]:53' >/dev/null 2>&1; then
+    diagnostic android-resolver-unavailable error 'Android DNS resolution is unavailable; verify the bundled engine and dnsproxyd access'
+  fi
+  if ! bounded 1 ip route get 1.1.1.1 mark 0x80000 >/dev/null 2>&1; then
+    diagnostic android-marked-route-unreachable error 'Android cannot route Tailscale bypass-mark traffic; use userspace mode instead of adding a persistent network-specific route'
+  fi
+}
+
 native_health() {
   local status="$1" backend addresses own_ips address peers peer route deadline
   DATA_PLANE=unknown

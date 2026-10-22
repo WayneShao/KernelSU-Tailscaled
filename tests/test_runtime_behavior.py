@@ -325,6 +325,38 @@ class RuntimeBehaviorTests(unittest.TestCase):
         time.sleep(2)
         self.assertEqual(len((self.root / 'starts').read_text().splitlines()), 1)
 
+    def test_android_login_reports_loopback_dns_failure_from_daemon_log(self):
+        self.write_status(backend='NeedsLogin', peers=False)
+        (self.root / 'android-runtime').touch()
+        (self.state / 'logs').mkdir(exist_ok=True)
+        (self.state / 'logs/tailscaled.log').write_text(
+            'lookup controlplane.tailscale.com on [::1]:53: read udp: connection refused\n'
+        )
+        self.start()
+        diagnostics = {item['code']: item for item in self.status()['diagnostics']}
+        self.assertIn('android-resolver-unavailable', diagnostics)
+        self.assertIn('DNS', diagnostics['android-resolver-unavailable']['message'])
+
+    def test_android_login_reports_unusable_bypass_mark_without_mutating_routes(self):
+        self.write_status(backend='NeedsLogin', peers=False)
+        (self.root / 'android-runtime').touch()
+        (self.root / 'marked-route-fail').touch()
+        self.start()
+        diagnostics = {item['code']: item for item in self.status()['diagnostics']}
+        self.assertIn('android-marked-route-unreachable', diagnostics)
+        self.assertIn('userspace', diagnostics['android-marked-route-unreachable']['message'])
+        calls = (self.root / 'ip-calls').read_text().splitlines()
+        self.assertIn('route get 1.1.1.1 mark 0x80000', calls)
+        self.assertFalse(any(' route add ' in f' {call} ' or ' route replace ' in f' {call} '
+                             for call in calls))
+
+    def test_running_android_does_not_treat_mark_probe_as_login_failure(self):
+        (self.root / 'android-runtime').touch()
+        (self.root / 'marked-route-fail').touch()
+        self.start()
+        codes = {item['code'] for item in self.status()['diagnostics']}
+        self.assertNotIn('android-marked-route-unreachable', codes)
+
     def test_cli_timeout_and_malformed_json_are_visible(self):
         self.start()
         (self.root / 'cli-hang').touch()

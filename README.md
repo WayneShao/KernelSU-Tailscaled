@@ -14,7 +14,7 @@ diagnostic health checks, explicit legacy migration, and verified runtime update
 The legacy Magisk-Tailscaled v1 release and update channel are retired. Only the
 `kernelsu-tailscaled` module line is maintained. Official store review is separate.
 This is an independent continuation of `ryukora/Magisk-Tailscaled`, not an official
-Tailscale or KernelSU product. The daemon remains the official Tailscale 1.102.3
+Tailscale or KernelSU product. The daemon remains the official Tailscale 1.104.2
 binary; this project maintains the Android module integration.
 
 ## Identity And Compatibility
