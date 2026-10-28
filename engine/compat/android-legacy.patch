@@ -1,0 +1,48 @@
+--- a/net/netmon/interfaces_linux.go
++++ b/net/netmon/interfaces_linux.go
+@@ -154,6 +154,11 @@
+ 
+ func defaultRouteFromNetlink() (d DefaultRouteDetails, err error) {
+ 	c, err := rtnetlink.Dial(&netlink.Config{Strict: true})
++	// Older kernels may support route dumps without strict-check socket options.
++	// Retry only unsupported-option errors, never permissions or malformed data.
++	if errors.Is(err, unix.ENOPROTOOPT) || errors.Is(err, unix.EOPNOTSUPP) {
++		c, err = rtnetlink.Dial(&netlink.Config{})
++	}
+ 	if err != nil {
+ 		return d, fmt.Errorf("defaultRouteFromNetlink: Dial: %w", err)
+ 	}
+--- a/feature/androiddns/auto.go
++++ b/feature/androiddns/auto.go
+@@ -11,6 +11,7 @@
+ 	"runtime"
+ 
+ 	"tailscale.com/feature"
++	"tailscale.com/net/dnscache"
+ )
+ 
+ // This init runs in GOOS=android builds without cgo and in all
+@@ -34,6 +35,8 @@
+ 	}
+ 	net.DefaultResolver.PreferGo = true
+ 	net.DefaultResolver.Dial = resolverDial
++	// The control client copies this forwarder, not net.DefaultResolver.
++	dnscache.Get().Forward = net.DefaultResolver
+ }
+ 
+ // onAndroid reports whether the process is running on Android, even
+--- a/net/netns/netns_linux.go
++++ b/net/netns/netns_linux.go
+@@ -122,11 +122,7 @@
+ func bindToDevice(fd uintptr) error {
+ 	ifc, err := netmon.DefaultRouteInterface()
+ 	if err != nil {
+-		// Make sure we bind to *some* interface,
+-		// or we could get a routing loop.
+-		// "lo" is always wrong, but if we don't have
+-		// a default route anyway, it doesn't matter.
+-		ifc = "lo"
++		return fmt.Errorf("finding outbound interface for SO_BINDTODEVICE: %w", err)
+ 	}
+ 	if err := unix.SetsockoptString(int(fd), unix.SOL_SOCKET, unix.SO_BINDTODEVICE, ifc); err != nil {
+ 		return fmt.Errorf("setting SO_BINDTODEVICE: %w", err)

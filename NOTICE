@@ -12,3 +12,9 @@ texts are bundled at webroot/licenses/Lucide.txt.
 Tailscale and tailscaled binaries are distributed under the BSD 3-Clause
 license by Tailscale Inc and contributors. hev-socks5-tunnel is distributed
 under the BSD 3-Clause license by its respective authors. See LICENSE.
+
+This beta bundles a modified Tailscale 1.104.4 engine (1.104.4-kst1),
+built by this project, not an official Tailscale binary release. The patch
+and pinned source/build instructions are in engine/compat and
+scripts/build-compat-engine.sh in the source repository. The upstream
+copyright and BSD license are included at tailscale/Tailscale-LICENSE.txt.

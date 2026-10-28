@@ -16,6 +16,8 @@ kst_activate() (
   old=$(kst_current) || exit 1
   new=$(kst_generation "$candidate") || exit 1
   [ "$new" != "$old" ] || exit 0
+  # Refuse incompatible external engines before stopping the active runtime.
+  ( BUNDLE_DIR=$new engine_select ) || { kst_error candidate-engine-policy-rejected; exit 1; }
   if [ -n "$old" ]; then
     old_code=$(kst_prop "$old" versionCode)
     new_code=$(kst_prop "$new" versionCode)

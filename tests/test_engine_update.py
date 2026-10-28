@@ -32,6 +32,70 @@ class EngineUpdateTests(unittest.TestCase):
         return subprocess.run(['sh', '-c', f'. "{library}"; ' + code],
                               env=self.env, text=True, capture_output=True)
 
+    def pin_compatibility(self):
+        (self.bundle / 'tailscale').mkdir()
+        (self.bundle / 'tailscale/engine-policy').write_text('bundled-compatibility\n')
+
+    def test_compatibility_policy_keeps_patched_bundle(self):
+        self.pin_compatibility()
+        engine = self.state / 'engines/1.104.2-arm64'
+        (engine / 'bin').mkdir(parents=True)
+        (engine / 'engine-version').write_text('1.104.2\n')
+        (self.state / 'engine-current').symlink_to(engine)
+        result = self.run_shell('engine_select && printf "%s" "$ENGINE_DIR"')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, str(self.bundle))
+
+    def test_compatibility_policy_rejects_newer_override(self):
+        self.pin_compatibility()
+        engine = self.prepare_transaction()
+        (self.state / 'engine-current').symlink_to(engine)
+        result = self.run_shell('engine_select')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('newer', result.stderr)
+
+    def test_compatibility_policy_blocks_apply_without_mutation(self):
+        self.pin_compatibility()
+        self.prepare_transaction()
+        result = self.transaction()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('compatibility', result.stderr)
+        self.assertFalse((self.state / 'calls').exists())
+        self.assertFalse((self.state / 'engine-transaction').exists())
+        self.assertEqual((self.state / 'tailscaled.state').read_text(), 'original identity')
+
+    def test_compatibility_policy_blocks_prepare_before_download(self):
+        self.pin_compatibility()
+        result = self.transaction(action='engine_prepare')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('compatibility', result.stderr)
+        self.assertFalse((self.state / 'engines').exists())
+
+    def test_activation_checks_pin_before_stopping_old_runtime(self):
+        self.pin_compatibility()
+        engine = self.prepare_transaction()
+        (self.state / 'engine-current').symlink_to(engine)
+        activation = ROOT / 'scripts/activate-runtime.sh'
+        result = self.run_shell(f'''
+          . "{activation}"
+          kst_current() {{ printf '/old'; }}
+          kst_generation() {{ printf '%s' "$BUNDLE_DIR"; }}
+          kst_prop() {{ if [ "$1" = /old ]; then echo 1; else echo 2; fi; }}
+          kst_engine_order() {{ return 0; }}
+          kst_runtime() {{ echo "$2" >> "$TS_DIR/calls"; }}
+          kst_pointer() {{ echo "$1" >> "$TS_DIR/pointers"; }}
+          kst_error() {{ echo "$1" >&2; }}
+          kst_activate "$BUNDLE_DIR" 1
+        ''')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.state / 'calls').exists())
+        self.assertFalse((self.state / 'pointers').exists())
+
+    def test_invalid_policy_fails_closed(self):
+        self.pin_compatibility()
+        (self.bundle / 'tailscale/engine-policy').write_text('typo\n')
+        self.assertNotEqual(self.run_shell('engine_select').returncode, 0)
+
     def test_bundled_engine_is_default(self):
         result = self.run_shell('engine_select; printf "%s" "$ENGINE_DIR"')
         self.assertEqual(result.returncode, 0, result.stderr)

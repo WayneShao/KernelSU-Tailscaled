@@ -14,3 +14,5 @@ tailscale/scripts/* text eol=lf
 files/tailscale-* binary
 files/tailscaled-* binary
 files/hev-socks5-tunnel-* binary
+tailscale/engine-policy text eol=lf
+*.patch text eol=lf -whitespace

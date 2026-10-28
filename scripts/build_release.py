@@ -52,7 +52,7 @@ def module_version(source: Path) -> str:
 
 def normalized_bytes(path: Path, name: str) -> bytes:
     data = path.read_bytes()
-    if PurePosixPath(name).suffix.lower() in TEXT_SUFFIXES or name.startswith("tailscale/scripts/") or name in {"LICENSE", "NOTICE", "skip_mount", "META-INF/com/google/android/update-binary", "META-INF/com/google/android/updater-script"}:
+    if PurePosixPath(name).suffix.lower() in TEXT_SUFFIXES or name.startswith("tailscale/scripts/") or name in {"tailscale/engine-policy", "LICENSE", "NOTICE", "skip_mount", "META-INF/com/google/android/update-binary", "META-INF/com/google/android/updater-script"}:
         data = data.replace(b"\r\n", b"\n")
     return data
 

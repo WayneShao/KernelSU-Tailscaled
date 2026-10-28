@@ -69,6 +69,18 @@ class ReleaseBuilderTests(unittest.TestCase):
             text=True,
         )
 
+    def test_compatibility_policy_is_normalized_from_windows_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / 'source'
+            self.make_source(source)
+            (source / 'tailscale/engine-policy').write_bytes(b'bundled-compatibility\r\n')
+            result = self.build(source, root / 'out')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for package in (root / 'out').glob('*.zip'):
+                with zipfile.ZipFile(package) as archive:
+                    self.assertEqual(archive.read('tailscale/engine-policy'), b'bundled-compatibility\n')
+
     def test_builds_verified_reproducible_architecture_packages(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

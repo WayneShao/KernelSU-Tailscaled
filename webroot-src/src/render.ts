@@ -183,11 +183,13 @@ export function renderEngineUpdate(root: HTMLElement, status: EngineStatus): voi
   addFact(facts, '官方稳定版', status.latest || '尚未检查');
   addFact(facts, '已校验待安装', status.staged || '无');
   section.append(facts);
-  appendText(section, 'p', '从 Tailscale 官方下载并校验。应用更新会短暂重启服务，保留登录和配置；设备无需重启。');
+  const pinned = status.policy === 'bundled-compatibility';
+  if (pinned) appendText(section, 'p', '此 beta 使用兼容性补丁引擎，暂时锁定内置版本，避免官方引擎更新覆盖修复。');
+  else appendText(section, 'p', '从 Tailscale 官方下载并校验。应用更新会短暂重启服务，保留登录和配置；设备无需重启。');
   addButton(section, 'engine-check', '检查更新', '检查官方稳定版');
-  if (status.latest) addButton(section, 'engine-prepare',
+  if (!pinned && status.latest) addButton(section, 'engine-prepare',
     status.latest === status.current ? '重新下载并校验' : '下载并校验', '下载并校验官方引擎');
-  if (status.staged) addButton(section, 'engine-apply', '应用引擎更新', '应用已校验引擎');
+  if (!pinned && status.staged) addButton(section, 'engine-apply', '应用引擎更新', '应用已校验引擎');
   addButton(section, 'back', '返回', '返回状态页');
   root.append(section);
 }

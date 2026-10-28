@@ -1,0 +1,8 @@
+{
+  "upstreamVersion": "1.104.4",
+  "upstreamCommit": "27047635f237d1f3e0b08c0f487674757f30d2f7",
+  "sourceUrl": "https://codeload.github.com/tailscale/tailscale/tar.gz/refs/tags/v1.104.4",
+  "sourceSha256": "862f12b3177d5e961f2a86cf82fb1ff3551786afcaf95f2dc9a8318889f98732",
+  "goVersion": "go1.27.3",
+  "buildVersion": "1.104.4-kst1"
+}
