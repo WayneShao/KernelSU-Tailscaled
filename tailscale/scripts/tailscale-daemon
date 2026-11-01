@@ -59,12 +59,13 @@ daemon_start() {
   else
     unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
   fi
+  # Upstream only infers a state root from --state when its parent is named tailscale.
   if [ "$MODE" = userspace ]; then
     launch_logged tailscaled "$DAEMON_PID" "$TAILSCALED_BIN" "--socket=$SOCKET_FILE" "$TAILSCALED_BIN" \
-      --tun="$tun" --socks5-server="$SOCKS_LISTEN" --state="$STATE_FILE" --socket="$SOCKET_FILE" --port="$TAILSCALE_PORT" --no-logs-no-support || return 1
+      --tun="$tun" --socks5-server="$SOCKS_LISTEN" --state="$STATE_FILE" --statedir="$TS_DIR" --socket="$SOCKET_FILE" --port="$TAILSCALE_PORT" --no-logs-no-support || return 1
   else
     launch_logged tailscaled "$DAEMON_PID" "$TAILSCALED_BIN" "--socket=$SOCKET_FILE" "$TAILSCALED_BIN" \
-      --tun="$tun" --state="$STATE_FILE" --socket="$SOCKET_FILE" --port="$TAILSCALE_PORT" --no-logs-no-support || return 1
+      --tun="$tun" --state="$STATE_FILE" --statedir="$TS_DIR" --socket="$SOCKET_FILE" --port="$TAILSCALE_PORT" --no-logs-no-support || return 1
   fi
   deadline=$(($(date +%s) + KST_START_TIMEOUT))
   while [ "$(date +%s)" -lt "$deadline" ]; do

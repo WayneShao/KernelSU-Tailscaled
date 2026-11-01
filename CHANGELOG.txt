@@ -1,3 +1,13 @@
+Unreleased
+
+- Fix Taildrop receiving by passing the private persistent state directory
+  explicitly to tailscaled in native and userspace modes. Keep the existing
+  identity file and preferences; queue files privately until `tailscale file get`.
+- Document root-shell Taildrop send/retrieve commands and server permissions.
+- Verify real Tailscale 1.104.2 transfers with Headscale 0.29.6: reproduce the
+  pre-fix PeerAPI 500; receive and retrieve in both modes across daemon restarts
+  with identity/preferences retained; verify outbound transfer under mksh.
+
 v2.0.5
 
 - Fix native Android control/UDP socket routing using the official interface

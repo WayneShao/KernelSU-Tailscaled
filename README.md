@@ -66,6 +66,44 @@ respects a later stop/disable. Updated engines persist across module installs
 and boot; a newer bundled engine takes precedence. See the
 [v2.0.5 release notes](docs/releases/v2.0.5.md) for validation and limits.
 
+## Send And Receive Files With Taildrop
+
+The module uses the Linux Taildrop inbox, not the Android app's notifications
+or automatic Downloads integration. Both native and userspace modes pass an
+explicit `--statedir=/data/adb/kernelsu-tailscaled` while keeping the existing
+`tailscaled.state` identity file. Incoming files are queued privately under
+`/data/adb/kernelsu-tailscaled/files/` and survive service restarts and module
+updates until retrieved. No new login or state migration is required.
+
+Send from your other device using its Tailscale share action or
+`tailscale file cp ./example.txt <phone-name-or-tailnet-ip>:`. On the phone,
+run these commands in a root shell to retrieve queued files:
+
+```sh
+TS=/data/adb/kernelsu-tailscaled
+"$TS/current/bin/tailscale" --socket="$TS/run/tailscaled.sock" \
+  file get /sdcard/Download
+```
+
+Choose a different existing destination if needed; shared storage must be
+available and writable. Retrieval removes successfully saved files from the
+private inbox. Existing same-named destination files are not overwritten by
+default. To send from the phone, use the same CLI and socket:
+
+```sh
+"$TS/current/bin/tailscale" --socket="$TS/run/tailscaled.sock" \
+  file cp /sdcard/Download/example.txt <peer-name-or-tailnet-ip>:
+```
+
+Both devices must be online and permitted to use Taildrop. For official
+Tailscale, enable **Send Files** for the tailnet and use personal devices owned
+by the same user; tagged devices are not supported by the normal personal-file
+flow. Headscale must supply the corresponding file-sharing capability and
+permitted peer access. A `500: failed to get taildrop manager` indicates receiver
+initialization failed; it does not prove the server policy is correct, because
+Tailscale checks the manager before checking permissions. See the
+[official Taildrop instructions](https://tailscale.com/docs/features/taildrop).
+
 ## Migrate An Existing Login
 
 Existing `kernelsu-tailscaled` installations, including beta.5, install the current release
