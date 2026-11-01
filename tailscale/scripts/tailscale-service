@@ -152,6 +152,34 @@ runtime_logs() {
   done
 }
 
+# This explicit action is the only response allowed to return a sign-in URL.
+login_server() {
+  local server extra previous auth='""' attempt=0
+  IFS= read -r server || { echo 'A single server URL line is required' >&2; return 2; }
+  if IFS= read -r extra || [ -n "$extra" ]; then echo 'Only one server URL is allowed' >&2; return 2; fi
+  server=${server:-https://controlplane.tailscale.com}
+  server=$(printf '%s\n' "$server" | json_read validate-server) || { echo 'Invalid HTTP/HTTPS server base URL' >&2; return 2; }
+  if module_disabled || migration_required || [ -f "$TS_DIR/migration-awaiting-enable" ]; then
+    echo 'Enable the module and complete any migration before signing in' >&2; return 1
+  fi
+  daemon_running || { echo 'The owned Tailscale daemon must be running' >&2; return 1; }
+  previous=$(cli_json auth-url status --json) || return 1
+  # Masked preference edits retain DNS, routes, hostname and other user choices.
+  # Restart the control client, not the daemon or Android device.
+  bounded "$KST_CLI_TIMEOUT" "$TAILSCALE_BIN" --socket="$SOCKET_FILE" debug localapi PATCH /localapi/v0/prefs \
+    "{\"ControlURL\":\"$server\",\"ControlURLSet\":true,\"WantRunning\":true,\"WantRunningSet\":true}" >/dev/null 2>&1 || { echo 'Could not save control server preference' >&2; return 1; }
+  bounded "$KST_CLI_TIMEOUT" "$TAILSCALE_BIN" --socket="$SOCKET_FILE" debug localapi POST /localapi/v0/start '{}' >/dev/null 2>&1 || { echo 'Server saved, but control client startup failed' >&2; return 1; }
+  bounded "$KST_CLI_TIMEOUT" "$TAILSCALE_BIN" --socket="$SOCKET_FILE" debug localapi POST /localapi/v0/login-interactive >/dev/null 2>&1 || { echo 'Server saved, but interactive sign-in failed' >&2; return 1; }
+  while [ "$attempt" -lt 5 ]; do
+    auth=$(cli_json auth-url status --json) || return 1
+    [ "$auth" = '""' ] || [ "$auth" = "$previous" ] || break
+    auth='""'
+    attempt=$((attempt + 1))
+    [ "$attempt" -ge 5 ] || sleep 1
+  done
+  printf '{"controlURL":"%s","authURL":%s}\n' "$server" "$auth"
+}
+
 case "$1" in
   enable) with_control_lock runtime_enable ;;
   disable) with_control_lock runtime_disable ;;
@@ -164,5 +192,6 @@ case "$1" in
   logs) runtime_logs ;;
   diagnostics) status_json; runtime_logs ;;
   web-restart) with_control_lock web_restart ;;
-  *) echo 'usage: tailscale-service {enable|disable|toggle|start|stop|restart|status|status-json|logs|web-restart|diagnostics}' >&2; exit 2 ;;
+  login-server) with_control_lock login_server ;;
+  *) echo 'usage: tailscale-service {enable|disable|toggle|start|stop|restart|status|status-json|logs|web-restart|diagnostics|login-server}' >&2; exit 2 ;;
 esac
