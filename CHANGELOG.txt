@@ -1,3 +1,11 @@
+Unreleased
+
+- Default the WebUI to English, retaining Simplified Chinese through a persistent
+  language selector on every page.
+- Add a Headscale/custom control-server field and explicit sign-in flow. Preserve
+  existing DNS, route and hostname preferences; require confirmation before
+  changing servers. Keep registration URLs out of ordinary status and logs.
+
 v2.0.5
 
 - Fix native Android control/UDP socket routing using the official interface

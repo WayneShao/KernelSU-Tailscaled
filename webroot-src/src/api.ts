@@ -1,4 +1,6 @@
 import { exec } from "kernelsu";
+import { t } from "./i18n";
+import { controlURL } from "./server";
 
 export type ModuleAction =
   | "status-json"
@@ -14,7 +16,8 @@ export type ModuleAction =
   | "engine-check"
   | "engine-prepare"
   | "engine-apply"
-  | "apply-staged";
+  | "apply-staged"
+  | "login-server";
 
 export interface CommandResult {
   stdout: string;
@@ -34,6 +37,7 @@ const ACTIONS: ReadonlySet<string> = new Set([
   "migration-status",
   "migrate-legacy",
   "apply-staged",
+  "login-server",
   "engine-status", "engine-check", "engine-prepare", "engine-apply",
 ]);
 
@@ -43,27 +47,28 @@ function deadlineFor(action: ModuleAction, remainingMs?: number): number {
   }
   const maximum = action === 'engine-prepare' ? 180_000 : ["status-json", "logs", "diagnostics", "migration-status"].includes(action) ? 40_000 : 90_000;
   if (remainingMs !== undefined && (!Number.isFinite(remainingMs) || remainingMs < 2_000)) {
-    throw new Error("操作超时，请刷新状态确认结果");
+    throw new Error(t("Operation timed out. Refresh status to check the result.", "操作超时，请刷新状态确认结果"));
   }
   return Math.min(remainingMs ?? maximum, maximum);
 }
 
-export function commandFor(action: ModuleAction, remainingMs?: number): string {
+export function commandFor(action: ModuleAction, remainingMs?: number, server?: string): string {
   const deadline = deadlineFor(action, remainingMs);
   // Leave time for the native callback after terminating a stalled shell command.
   const cushion = deadline >= 10_000 ? 5_000 : 1_000;
   const seconds = Math.max(1, Math.floor((deadline - cushion) / 1_000));
-  return `/data/adb/ksu/bin/busybox timeout -s KILL ${seconds} sh ${SERVICE} ${action}`;
+  const command = `/data/adb/ksu/bin/busybox timeout -s KILL ${seconds} sh ${SERVICE} ${action}`;
+  return action === "login-server" ? `printf '%s\\n' '${controlURL(server ?? "")}' | ${command}` : command;
 }
 
-export async function runAction(action: ModuleAction, remainingMs?: number): Promise<CommandResult> {
+export async function runAction(action: ModuleAction, remainingMs?: number, server?: string): Promise<CommandResult> {
   const deadline = deadlineFor(action, remainingMs);
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const expired = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`操作超时 (${deadline / 1_000}s)，请刷新状态确认结果`)), deadline);
+      timer = setTimeout(() => reject(new Error(t(`Operation timed out (${deadline / 1_000}s). Refresh status to check the result.`, `操作超时 (${deadline / 1_000}s)，请刷新状态确认结果`))), deadline);
     });
-    const result = await Promise.race([exec(commandFor(action, remainingMs)), expired]);
+    const result = await Promise.race([exec(commandFor(action, remainingMs, server)), expired]);
     return {
       stdout: String(result.stdout ?? ""),
       stderr: String(result.stderr ?? ""),

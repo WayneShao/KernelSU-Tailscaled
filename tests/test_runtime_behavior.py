@@ -84,6 +84,59 @@ class RuntimeBehaviorTests(unittest.TestCase):
     def common(self, body):
         return subprocess.run(['/bin/sh', '-c', '. "$BUNDLE_DIR/tailscale/scripts/common.sh"; ' + body], env=self.env, capture_output=True, text=True, timeout=10)
 
+    def test_login_server_preserves_preferences_and_scopes_auth_url(self):
+        self.start()
+        before = json.loads((self.root / 'prefs.json').read_text())
+        result = subprocess.run(['/bin/sh', str(self.service), 'login-server'],
+                                input='https://headscale.example.com:8443\n', env=self.env,
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        response = json.loads(result.stdout)
+        self.assertEqual(response, {'controlURL': 'https://headscale.example.com:8443',
+                                    'authURL': 'https://headscale.example.com:8443/register/TEST_LOGIN_SECRET'})
+        prefs = json.loads((self.root / 'prefs.json').read_text())
+        for key, value in before.items():
+            self.assertEqual(prefs[key], value)
+        status = self.status()
+        self.assertEqual(status['prefs']['ControlURL'], response['controlURL'])
+        self.assertNotIn('TEST_LOGIN_SECRET', json.dumps(status))
+        self.assertNotIn('PRIVATE_SENTINEL', json.dumps(status))
+
+    def test_login_server_rejects_unsafe_input_before_mutation(self):
+        self.start()
+        before = (self.root / 'prefs.json').read_text()
+        for url in ['https://example.com;touch /tmp/INJECTED', 'https://user:pass@example.com',
+                    'https://example.com?token=secret', 'https://example.com#fragment',
+                    'file:///tmp/a', 'https://example.com:65536', 'https://example.com\nextra',
+                    'https://example.com/$(id)', 'https://example.com/"', 'https://example.com/\\']:
+            with self.subTest(url=url):
+                result = subprocess.run(['/bin/sh', str(self.service), 'login-server'],
+                                        input=url + '\n', env=self.env, capture_output=True,
+                                        text=True, timeout=10)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual((self.root / 'prefs.json').read_text(), before)
+
+    def test_login_server_never_starts_disabled_or_migrating_identity(self):
+        before = (self.root / 'prefs.json').read_text()
+        for marker in [self.mod / 'disable', self.state / 'migration-required', self.state / 'migration-awaiting-enable']:
+            marker.touch()
+            result = subprocess.run(['/bin/sh', str(self.service), 'login-server'],
+                                    input='https://headscale.example.com\n', env=self.env,
+                                    capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((self.root / 'starts').exists())
+            self.assertEqual((self.root / 'prefs.json').read_text(), before)
+            marker.unlink()
+
+    def test_login_server_reports_localapi_failure_without_auth_success(self):
+        self.start()
+        (self.root / 'localapi-fail').touch()
+        result = subprocess.run(['/bin/sh', str(self.service), 'login-server'],
+                                input='https://headscale.example.com\n', env=self.env,
+                                capture_output=True, text=True, timeout=10)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, '')
+
     def test_native_health_rejects_missing_interface(self):
         (self.root / 'link').unlink()
         result = subprocess.run(['/bin/sh', str(self.scripts / 'tailscale-tunnel'), 'health'], env=self.env)

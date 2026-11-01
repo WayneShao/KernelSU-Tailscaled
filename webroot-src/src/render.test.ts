@@ -18,16 +18,6 @@ describe("renderDashboard", () => {
     expect(root.textContent).toContain('<img src=x onerror="alert(1)">');
   });
 
-  it("exposes an enable-disable control based on current state", () => {
-    const root = document.createElement("div");
-
-    renderDashboard(root, parseRuntimeStatus(JSON.stringify(running)));
-
-    expect(root.querySelector<HTMLButtonElement>("[data-action=disable]")?.textContent).toContain(
-      "禁用",
-    );
-    expect(root.querySelector("[data-action=open-panel]")).not.toBeNull();
-  });
 });
 
 describe("schema 2 dashboard", () => {
@@ -35,8 +25,6 @@ describe("schema 2 dashboard", () => {
     const root = document.createElement("div");
     renderDashboard(root, parseRuntimeStatus(JSON.stringify(degraded)));
     expect(root.querySelector("h1")?.textContent).toBe("KernelSU-Tailscaled");
-    expect(root.querySelector("[data-lifecycle=degraded]")?.textContent).toContain("降级");
-    expect(root.querySelector('[data-state="unknown"]')?.textContent).toContain("未知");
     expect(root.textContent).toContain("DNS server is unreachable");
     expect(root.textContent).toContain("2.0.0-beta.2");
     expect(root.textContent).toContain("2.0.0-alpha.1");

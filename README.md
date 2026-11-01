@@ -44,14 +44,50 @@ under `docs/verification` for actual results and remaining limits.
    configuration are preserved. No post-install patch script is needed.
 3. Installation starts the new runtime immediately unless an old login still
    requires explicit migration. No script requests or performs an Android reboot.
-4. For a fresh identity, open the official local panel
-   to sign in. For an existing legacy identity, follow the migration below.
+4. Open the module WebUI to sign in. Leave **Control server URL** blank for
+   Tailscale, or enter your Headscale server URL. For an existing legacy identity,
+   follow the migration below before signing in.
 
 Hot installation switches scripts and binaries together and publishes the
 complete manager view from that same ZIP. Reopen an already-open Details page
 to load its new assets. Normal KernelSU module promotion remains compatible with
 the selected runtime. **Apply staged runtime** is also available for a staged
 candidate; routine ZIP installation does not need that extra step.
+
+## WebUI Language And Headscale
+
+The module WebUI defaults to **English**, regardless of your device language.
+Use **Language → 简体中文** in any page header to switch to Simplified Chinese.
+The choice is remembered in that WebView; if storage is disabled, it lasts only
+for the current session. Raw engine diagnostics and log messages are not translated.
+
+The bundled official Tailscale engine supports Headscale. Under **Sign in /
+Headscale**, enter your server's base URL, for example
+`https://headscale.example.com`, and choose **Connect / sign in**. Confirm the
+server, then open the returned sign-in link and complete registration using your
+Headscale server's instructions. Refresh status afterward. If the server is slow
+to return a link, use **Open full panel** to finish signing in.
+
+Leave the field blank to return to the official Tailscale service. Changing
+servers can disconnect the current network and requires registration on the
+selected server; do this locally, not through a Tailscale-only remote session.
+The module must be enabled and its daemon running. Migration must be completed
+and explicitly enabled first. The URL is saved in Tailscale's persistent
+preferences, retaining hostname, DNS, route and other settings across restarts.
+HTTPS is recommended. HTTP is accepted for private/test servers but is unencrypted.
+Credentials, query parameters and fragments are not accepted in server URLs.
+
+The equivalent root command reads one URL line from standard input:
+
+```sh
+printf '%s\n' 'https://headscale.example.com' | \
+  sh /data/adb/modules/kernelsu-tailscaled/control.sh login-server
+```
+
+Its JSON reply includes the selected `controlURL` and a registration `authURL`
+(empty while pending). Treat the registration URL as sensitive; ordinary status
+and log output continue to redact authentication URLs. No auth key is required
+in the WebUI. See [Headscale client registration](https://headscale.net/stable/usage/connect/android/).
 
 ## Update The Tailscale Engine
 
@@ -136,10 +172,11 @@ not treat an inconclusive ownership check as proof that the process exited.
 ```text
 /data/adb/modules/kernelsu-tailscaled/control.sh
   {enable|disable|toggle|start|stop|restart|status|status-json|logs|
-   web-restart|diagnostics|migration-status|migrate-legacy|apply-staged}
+   web-restart|diagnostics|migration-status|migrate-legacy|apply-staged|login-server}
 ```
 
-The WebUI invokes only a fixed command allowlist. The full official panel binds
+The WebUI invokes only a fixed command allowlist; `login-server` additionally
+accepts one validated HTTP/HTTPS base URL on stdin. The full official panel binds
 to IPv4 loopback. Log output is size-bounded and redacts keys, login URLs and proxy
 credentials. Treat any diagnostics as potentially containing device/network names.
 Uninstall stops owned processes but preserves v2 data. To intentionally discard a

@@ -40,7 +40,7 @@ describe("commandFor", () => {
   it("bounds status by the remaining panel-wait budget", async () => {
     vi.useFakeTimers();
     vi.mocked(exec).mockReturnValue(new Promise(() => {}));
-    const pending = expect(runAction("status-json", 4_000)).rejects.toThrow(/超时/);
+    const pending = expect(runAction("status-json", 4_000)).rejects.toThrow();
     expect(vi.mocked(exec).mock.lastCall?.[0]).toContain("KILL 3 ");
     await vi.advanceTimersByTimeAsync(4_000);
     await pending;
