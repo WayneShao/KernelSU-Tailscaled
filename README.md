@@ -66,6 +66,33 @@ respects a later stop/disable. Updated engines persist across module installs
 and boot; a newer bundled engine takes precedence. See the
 [v2.0.5 release notes](docs/releases/v2.0.5.md) for validation and limits.
 
+## Taildrop On Android
+
+Taildrop works in native mode; switching to userspace networking is not required.
+The module sets `--statedir=/data/adb/kernelsu-tailscaled` so the Linux daemon can
+queue incoming files under `/data/adb/kernelsu-tailscaled/files/`, separately from
+the existing login state. Queued files survive service restarts and module updates.
+Unlike the Android app, this module does not automatically save them to Downloads.
+
+Retrieve queued files from a root shell:
+
+```sh
+TS=/data/adb/kernelsu-tailscaled
+"$TS/current/bin/tailscale" --socket="$TS/run/tailscaled.sock" \
+  file get /sdcard/Download
+```
+
+To send from the phone, use the module's CLI and socket:
+
+```sh
+"$TS/current/bin/tailscale" --socket="$TS/run/tailscaled.sock" \
+  file cp /sdcard/Download/example.txt <peer-name-or-tailnet-ip>:
+```
+
+If you use Headscale instead of the official Tailscale service, your server must
+advertise the file-sharing capability. For general Taildrop setup and usage, see
+the [official documentation](https://tailscale.com/docs/features/taildrop).
+
 ## Migrate An Existing Login
 
 Existing `kernelsu-tailscaled` installations, including beta.5, install the current release

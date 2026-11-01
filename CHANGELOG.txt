@@ -1,3 +1,17 @@
+Unreleased
+
+- Fix Taildrop receiving by passing the private persistent state directory
+  explicitly to tailscaled in native and userspace modes. Keep the existing
+  identity file and preferences; queue files privately until `tailscale file get`.
+- Document the native-mode Taildrop inbox and module-specific root-shell commands.
+- Verify real Tailscale 1.104.2 transfers with Headscale 0.29.6: reproduce the
+  pre-fix PeerAPI 500; receive and retrieve in both modes across daemon restarts
+  with identity/preferences retained; verify outbound transfer under mksh.
+- Confirm on Android with SELinux enforcing: receive from Mac, retain the inbox
+  across service restart, retrieve into shared Downloads, and send back to Mac
+  with matching SHA-256 and unchanged identity/preferences.
+  Verify a separate 3.36 GB transfer with a matching SHA-256 checksum.
+
 v2.0.5
 
 - Fix native Android control/UDP socket routing using the official interface
