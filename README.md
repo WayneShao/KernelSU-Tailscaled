@@ -10,7 +10,10 @@ Run the official Tailscale daemon on rooted Android without occupying Android's
 VPN slot. KernelSU-first module with a local WebUI, serialized lifecycle control,
 diagnostic health checks, explicit legacy migration, and verified runtime updates.
 
-**[2.0.5 is the current stable release](https://github.com/WayneShao/KernelSU-Tailscaled/releases/latest).**
+This source tree targets **2.1.0**, adding an English-default WebUI with a
+language selector and Headscale sign-in. See the [2.1.0 release notes](docs/releases/v2.1.0.md).
+
+Download the [latest published stable release](https://github.com/WayneShao/KernelSU-Tailscaled/releases/latest).
 The legacy Magisk-Tailscaled v1 release and update channel are retired. Only the
 `kernelsu-tailscaled` module line is maintained. Official store review is separate.
 This is an independent continuation of `ryukora/Magisk-Tailscaled`, not an official

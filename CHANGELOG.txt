@@ -1,10 +1,11 @@
-Unreleased
+v2.1.0
 
 - Default the WebUI to English, retaining Simplified Chinese through a persistent
   language selector on every page.
 - Add a Headscale/custom control-server field and explicit sign-in flow. Preserve
   existing DNS, route and hostname preferences; require confirmation before
   changing servers. Keep registration URLs out of ordinary status and logs.
+- See docs/releases/v2.1.0.md for setup and upgrade notes.
 
 v2.0.5
 
