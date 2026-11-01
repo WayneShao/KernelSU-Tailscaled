@@ -66,18 +66,15 @@ respects a later stop/disable. Updated engines persist across module installs
 and boot; a newer bundled engine takes precedence. See the
 [v2.0.5 release notes](docs/releases/v2.0.5.md) for validation and limits.
 
-## Send And Receive Files With Taildrop
+## Taildrop On Android
 
-The module uses the Linux Taildrop inbox, not the Android app's notifications
-or automatic Downloads integration. Both native and userspace modes pass an
-explicit `--statedir=/data/adb/kernelsu-tailscaled` while keeping the existing
-`tailscaled.state` identity file. Incoming files are queued privately under
-`/data/adb/kernelsu-tailscaled/files/` and survive service restarts and module
-updates until retrieved. No new login or state migration is required.
+Taildrop works in native mode; switching to userspace networking is not required.
+The module sets `--statedir=/data/adb/kernelsu-tailscaled` so the Linux daemon can
+queue incoming files under `/data/adb/kernelsu-tailscaled/files/`, separately from
+the existing login state. Queued files survive service restarts and module updates.
+Unlike the Android app, this module does not automatically save them to Downloads.
 
-Send from your other device using its Tailscale share action or
-`tailscale file cp ./example.txt <phone-name-or-tailnet-ip>:`. On the phone,
-run these commands in a root shell to retrieve queued files:
+Retrieve queued files from a root shell:
 
 ```sh
 TS=/data/adb/kernelsu-tailscaled
@@ -85,55 +82,16 @@ TS=/data/adb/kernelsu-tailscaled
   file get /sdcard/Download
 ```
 
-Choose a different existing destination if needed; shared storage must be
-available and writable. Retrieval removes successfully saved files from the
-private inbox. Existing same-named destination files are not overwritten by
-default. To send from the phone, use the same CLI and socket:
+To send from the phone, use the module's CLI and socket:
 
 ```sh
 "$TS/current/bin/tailscale" --socket="$TS/run/tailscaled.sock" \
   file cp /sdcard/Download/example.txt <peer-name-or-tailnet-ip>:
 ```
 
-Both devices must be online and permitted to use Taildrop. For official
-Tailscale, enable **Send Files** for the tailnet and use personal devices owned
-by the same user; tagged devices are not supported by the normal personal-file
-flow. Headscale must supply the corresponding file-sharing capability and
-permitted peer access. A `500: failed to get taildrop manager` indicates receiver
-initialization failed; it does not prove the server policy is correct, because
-Tailscale checks the manager before checking permissions. See the
-[official Taildrop instructions](https://tailscale.com/docs/features/taildrop).
-
-If receiving still reports `no storage directory` after installing an update,
-check the **running process**, not just the version displayed in Manager:
-
-```sh
-TS=/data/adb/kernelsu-tailscaled
-readlink -f "$TS/current"
-read -r PID < "$TS/run/tailscaled.pid"
-tr '\000' ' ' < "/proc/$PID/cmdline"
-printf '\n'
-```
-
-The command line must include `--statedir=/data/adb/kernelsu-tailscaled`. If it
-does not, the old startup code is still active. Install a build containing the
-fix with a higher `versionCode`; changed bundles with an equal version code
-are rejected by the activation guard. Restarting an unchanged generation does
-not add missing arguments. Also confirm the sender targets the phone's current
-Tailscale IP, especially if an older offline entry has the same hostname.
-
-Real-device validation used Tailscale 1.104.2 in native mode on Android with
-SELinux enforcing. Mac-to-phone reception, inbox persistence across a service
-restart, retrieval into `/sdcard/Download`, and phone-to-Mac delivery passed
-SHA-256 verification without changing node identity or preferences. A separate
-3.36 GB transfer completed with a matching SHA-256 checksum.
-
-The sender's CLI may display `not replying; trying anyway` without visible
-progress even while a large transfer is running. The warning alone is not a
-transfer failure or a file-size limit; wait for completion or an actual error.
-If a transfer is interrupted, retry the same file with the same filename so
-Taildrop can attempt to resume it. See the official instructions above for
-resume support and retention limits.
+If you use Headscale instead of the official Tailscale service, your server must
+advertise the file-sharing capability. For general Taildrop setup and usage, see
+the [official documentation](https://tailscale.com/docs/features/taildrop).
 
 ## Migrate An Existing Login
 
