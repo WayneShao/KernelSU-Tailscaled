@@ -104,6 +104,37 @@ initialization failed; it does not prove the server policy is correct, because
 Tailscale checks the manager before checking permissions. See the
 [official Taildrop instructions](https://tailscale.com/docs/features/taildrop).
 
+If receiving still reports `no storage directory` after installing an update,
+check the **running process**, not just the version displayed in Manager:
+
+```sh
+TS=/data/adb/kernelsu-tailscaled
+readlink -f "$TS/current"
+read -r PID < "$TS/run/tailscaled.pid"
+tr '\000' ' ' < "/proc/$PID/cmdline"
+printf '\n'
+```
+
+The command line must include `--statedir=/data/adb/kernelsu-tailscaled`. If it
+does not, the old startup code is still active. Install a build containing the
+fix with a higher `versionCode`; changed bundles with an equal version code
+are rejected by the activation guard. Restarting an unchanged generation does
+not add missing arguments. Also confirm the sender targets the phone's current
+Tailscale IP, especially if an older offline entry has the same hostname.
+
+Real-device validation used Tailscale 1.104.2 in native mode on Android with
+SELinux enforcing. Mac-to-phone reception, inbox persistence across a service
+restart, retrieval into `/sdcard/Download`, and phone-to-Mac delivery passed
+SHA-256 verification without changing node identity or preferences. A separate
+3.36 GB transfer completed with a matching SHA-256 checksum.
+
+The sender's CLI may display `not replying; trying anyway` without visible
+progress even while a large transfer is running. The warning alone is not a
+transfer failure or a file-size limit; wait for completion or an actual error.
+If a transfer is interrupted, retry the same file with the same filename so
+Taildrop can attempt to resume it. See the official instructions above for
+resume support and retention limits.
+
 ## Migrate An Existing Login
 
 Existing `kernelsu-tailscaled` installations, including beta.5, install the current release
