@@ -1,4 +1,17 @@
-Unreleased
+v2.1.1-dev.1 (local integration; not published)
+
+- Combine feature/english-language-switch-headscale, fix/idle-battery-overhead,
+  and fix/taildrop-state-directory in one private upgrade with versionCode
+  20000019. No logout, login, control-server change, or Android reboot.
+- Verify the same node ID, IPs, exact state, preferences, and configuration after
+  installation. All runtime components run; existing DNS warnings remain.
+- Verify 154 Linux tests, 69 frontend tests, 18 browser tests, ShellCheck, and all
+  three package variants. Installed supervisor CPU: 0.27 CPU-seconds/60.57s;
+  unchanged Manager metadata. English/Chinese persistence and Headscale field
+  verified against a read-only browser bridge; installed UI hashes match.
+- Post-install Mac-to-phone Taildrop transfer remains unverified: Mac reports
+  coordination-server disconnection, unanswered peer/DERP probes and no UDP.
+  The installed daemon has the explicit private --statedir; login is retained.
 
 - Fix Taildrop receiving by passing the private persistent state directory
   explicitly to tailscaled in native and userspace modes. Keep the existing
