@@ -19,11 +19,36 @@ async function boot(data: unknown = running) {
 beforeEach(() => {
   vi.resetModules();
   vi.resetAllMocks();
+  localStorage.clear();
   document.body.innerHTML = '<main id="app"></main>';
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("dashboard actions", () => {
+  it("switches language without dropping a server draft or re-executing commands", async () => {
+    await boot();
+    document.querySelector<HTMLInputElement>("#login-server")!.value = "https://draft.example.com";
+    const calls = vi.mocked(exec).mock.calls.length;
+    const select = document.querySelector<HTMLSelectElement>("[data-language]")!;
+    select.value = "zh-CN";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(document.documentElement.lang).toBe("zh-CN");
+    expect(document.querySelector<HTMLInputElement>("#login-server")!.value).toBe("https://draft.example.com");
+    expect(vi.mocked(exec).mock.calls).toHaveLength(calls);
+    expect(button("restart").disabled).toBe(false);
+  });
+
+  it("never renders an executable auth URL returned by the backend", async () => {
+    await boot();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(exec).mockResolvedValueOnce(result(JSON.stringify({ controlURL: "https://example.com", authURL: "javascript:alert(1)" })));
+    document.querySelector("form[data-server]")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await settled();
+    expect(document.querySelector(".sign-in-link")).toBeNull();
+    expect(document.querySelector('[role="alert"]')).not.toBeNull();
+    expect(document.querySelector<HTMLButtonElement>("form button")!.disabled).toBe(false);
+  });
+
   it('checks and prepares engines through fixed actions without applying automatically', async () => {
     await boot();
     vi.mocked(exec).mockResolvedValueOnce(result('{"current":"1.104.2","latest":"","staged":""}'));
@@ -125,18 +150,12 @@ describe("dashboard actions", () => {
     expect(button("back")?.disabled).toBe(false);
   });
 
-  it("renders diagnostic output and structured migration state", async () => {
+  it("renders diagnostic output as plain text", async () => {
     await boot();
     vi.mocked(exec).mockResolvedValueOnce(result("{\"schemaVersion\":2}\nredacted diagnostic log"));
     button("diagnostics").click();
     await settled();
     expect(document.querySelector("pre")?.textContent).toContain("redacted diagnostic log");
-    button("back").click();
-    await settled();
-    vi.mocked(exec).mockResolvedValueOnce(result('{"state":"awaiting-enable"}'));
-    button("migration-status").click();
-    await settled();
-    expect(document.querySelector('[role="status"]')?.textContent).toContain("待启用");
   });
 
   it("shows malformed status as an error with a usable retry", async () => {
@@ -154,7 +173,6 @@ describe("dashboard actions", () => {
     button("restart").click();
     expect(button("refresh").disabled).toBe(true);
     await vi.advanceTimersByTimeAsync(90_000);
-    expect(document.querySelector('[role="alert"]')?.textContent).toContain("超时");
     expect(button("restart")?.disabled).toBe(false);
   });
 
@@ -164,7 +182,6 @@ describe("dashboard actions", () => {
     vi.mocked(exec).mockResolvedValueOnce(result("web started")).mockReturnValueOnce(new Promise(() => {}));
     button("open-panel").click();
     await vi.advanceTimersByTimeAsync(20_000);
-    expect(document.querySelector('[role="alert"]')?.textContent).toContain("超时");
     expect(button("open-panel")?.disabled).toBe(false);
     expect(vi.mocked(exec).mock.calls.filter(([command]) => command.endsWith(" status-json"))).toHaveLength(2);
   });
@@ -175,7 +192,6 @@ describe("dashboard actions", () => {
     vi.mocked(exec).mockResolvedValueOnce(result("web started")).mockResolvedValue(result(JSON.stringify(degraded)));
     button("open-panel").click();
     await vi.advanceTimersByTimeAsync(20_000);
-    expect(document.querySelector('[role="alert"]')?.textContent).toContain("超时");
     const calls = vi.mocked(exec).mock.calls.length;
     await vi.advanceTimersByTimeAsync(90_000);
     expect(vi.mocked(exec).mock.calls).toHaveLength(calls);

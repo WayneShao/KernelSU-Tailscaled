@@ -27,6 +27,7 @@ export interface RuntimeStatus {
   acceptRoutes: boolean | null;
   acceptDNS: boolean | null;
   exitNode: string | null;
+  controlURL: string | null;
   moduleVersion: string;
   tailscaleVersion: string;
   components: RuntimeComponents;
@@ -127,6 +128,7 @@ export function parseRuntimeStatus(input: string): RuntimeStatus {
     let acceptRoutes: boolean | null = null;
     let acceptDNS: boolean | null = null;
     let exitNode: string | null = null;
+    let controlURL: string | null = null;
     if (raw.prefs !== null) {
       if (!isObject(raw.prefs) || typeof raw.prefs.RouteAll !== "boolean" || typeof raw.prefs.CorpDNS !== "boolean") {
         throw new Error("Invalid runtime status");
@@ -138,6 +140,7 @@ export function parseRuntimeStatus(input: string): RuntimeStatus {
         throw new Error("Invalid runtime status");
       }
       exitNode = exitNodeID || null;
+      if (raw.prefs.ControlURL !== undefined) controlURL = nullableString(raw.prefs.ControlURL);
     }
 
     const webListen = raw.webListen ?? "127.0.0.1:8088";
@@ -156,6 +159,7 @@ export function parseRuntimeStatus(input: string): RuntimeStatus {
       acceptRoutes,
       acceptDNS,
       exitNode,
+      controlURL,
       moduleVersion: requireString(raw, "moduleVersion"),
       tailscaleVersion: requireString(raw, "tailscaleVersion"),
       components,
