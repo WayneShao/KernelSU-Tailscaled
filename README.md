@@ -133,6 +133,25 @@ If process identity checks disagree while the recorded process is still alive,
 the controller retains its record and socket and blocks replacement. It does
 not treat an inconclusive ownership check as proof that the process exited.
 
+The supervisor checks owned processes every `SUPERVISOR_INTERVAL` seconds
+(default: five), including while logged out so the daemon and login panel can
+recover. It does not poll authentication, peer routes, or network health in this
+loop; detailed diagnostics run when requested. Manager descriptions and pending
+hot-install finalization refresh about once a minute, not every health pass.
+Descriptions have no ticking clock and unchanged content is not rewritten.
+IPv4 queries are time-bounded and skipped when the service is not running or
+its socket is missing. Native mode does not mean kernel WireGuard: Tailscale
+still handles encryption in its userspace daemon.
+
+On-device idle profiling (Android mksh, five-second supervision, real logged-out
+daemon and panel in isolated state/ports) measured supervisor plus child CPU
+at 7.73 CPU-seconds per 60.43 seconds before, versus 0.42/60.64 and 0.40/60.38
+after: about 95% less supervisor CPU. The daemon used userspace networking to
+avoid changing the active TUN; the supervisor used the native process-check
+branch. Both fixed samples left Manager metadata unchanged, and killing the
+isolated panel exercised successful HTTP recovery while still logged out.
+This is CPU evidence, not a screen-off battery-life or tunnel-mode benchmark.
+
 ```text
 /data/adb/modules/kernelsu-tailscaled/control.sh
   {enable|disable|toggle|start|stop|restart|status|status-json|logs|

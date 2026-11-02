@@ -29,6 +29,9 @@ class RuntimeBehaviorTests(unittest.TestCase):
             if file.is_file():
                 file.write_bytes(file.read_bytes().replace(b'#!/system/bin/sh', b'#!/bin/sh'))
                 file.chmod(0o755)
+        (self.bundle / 'scripts').mkdir()
+        for name in ['status-summary.sh', 'hot-finalize.sh']:
+            shutil.copy(ROOT / 'scripts' / name, self.bundle / 'scripts' / name)
         (self.bundle / 'module.prop').write_text('version=2.0.0-beta.1\nversionCode=20000001\n')
         (self.mod / 'module.prop').write_text('version=2.0.0-beta.1\n')
         for name in ['tailscale', 'tailscaled', 'ip', 'nc', 'settings', 'getprop']:
@@ -148,6 +151,50 @@ class RuntimeBehaviorTests(unittest.TestCase):
         self.assertIn('migrat', json.dumps(self.status()['diagnostics']).lower())
         self.start()
         self.assertFalse((self.root / 'sets').exists())
+
+    def test_process_identity_handles_parentheses_spaces_and_exact_arguments(self):
+        # Linux comm is allowed to contain both spaces and closing parentheses.
+        proc = subprocess.Popen(['/bin/sh', '-c', 'printf "odd ) name" > /proc/$$/comm; while :; do sleep 1; done'])
+        try:
+            deadline = time.monotonic() + 2
+            while Path(f'/proc/{proc.pid}/comm').read_text().strip() != 'odd ) name' and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertEqual('odd ) name', Path(f'/proc/{proc.pid}/comm').read_text().strip())
+            result = self.common(f'pid_matches {proc.pid} /bin/sh -c && '
+                                 f'! pid_matches {proc.pid} /bin/sh - && '
+                                 f'write_pid "$RUN_DIR/identity.pid" {proc.pid} /bin/sh -c && '
+                                 'owned_alive "$RUN_DIR/identity.pid" /bin/sh -c')
+            self.assertEqual(0, result.returncode, result.stderr)
+        finally:
+            proc.terminate()
+            proc.wait()
+
+    def test_logged_out_idle_avoids_cli_and_network_probes_but_recovers_panel(self):
+        self.write_status(backend='NeedsLogin', peers=False, TailscaleIPs=[])
+        self.start()
+        time.sleep(0.5)
+        calls = (self.root / 'cli-calls').read_text()
+        time.sleep(3)
+        self.assertEqual(calls, (self.root / 'cli-calls').read_text())
+        self.assertFalse((self.root / 'ip-calls').exists())
+        record = self.state / 'run/web.pid'
+        old_pid = int(record.read_text().splitlines()[0])
+        os.kill(old_pid, signal.SIGKILL)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if record.exists() and int(record.read_text().splitlines()[0]) != old_pid:
+                break
+            time.sleep(0.05)
+        self.assertNotEqual(old_pid, int(record.read_text().splitlines()[0]))
+        with socket.create_connection(('127.0.0.1', self.port), timeout=1):
+            pass
+        os.kill(int((self.state / 'run/tailscaled.pid').read_text().splitlines()[0]), signal.SIGKILL)
+        deadline = time.monotonic() + 7
+        while time.monotonic() < deadline:
+            if len((self.root / 'starts').read_text().splitlines()) > 1:
+                break
+            time.sleep(0.05)
+        self.assertEqual(2, len((self.root / 'starts').read_text().splitlines()))
 
     def test_pid_starttime_prevents_reused_pid_termination(self):
         proc = subprocess.Popen(['/bin/sleep', '30'])

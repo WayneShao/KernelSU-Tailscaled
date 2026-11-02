@@ -7,6 +7,20 @@ BUNDLE_DIR=${BUNDLE_DIR:-$TS_DIR/current}
 
 [ -f "$MODDIR/update" ] && [ ! -L "$MODDIR/update" ] || exit 0
 [ -d "$KST_STAGED_DIR" ] && [ ! -L "$KST_STAGED_DIR" ] || exit 0
+
+# A stopped or logged-out runtime cannot finish a hot install. Check this before
+# hashing the large bundled engines on every deferred attempt.
+[ "$(sed -n '1p' "$TS_DIR/run/wanted" 2>/dev/null)" = 1 ] || exit 0
+[ "$(sed -n '1p' "$TS_DIR/run/lifecycle" 2>/dev/null)" = running ] || exit 0
+[ -S "$TS_DIR/run/tailscaled.sock" ] || exit 0
+KST_BUSYBOX=${KST_BUSYBOX:-/data/adb/ksu/bin/busybox}
+KST_CLI_TIMEOUT=${KST_CLI_TIMEOUT:-3}
+if [ -x "$KST_BUSYBOX" ]; then
+  "$KST_BUSYBOX" timeout -s KILL "$KST_CLI_TIMEOUT" "$BUNDLE_DIR/bin/tailscale" --socket="$TS_DIR/run/tailscaled.sock" ip -4 >/dev/null 2>&1 || exit 0
+else
+  timeout -s KILL "$KST_CLI_TIMEOUT" "$BUNDLE_DIR/bin/tailscale" --socket="$TS_DIR/run/tailscaled.sock" ip -4 >/dev/null 2>&1 || exit 0
+fi
+
 [ -f "$BUNDLE_DIR/bundle.sha256" ] && [ -f "$KST_STAGED_DIR/bundle.sha256" ] || exit 0
 cmp -s "$BUNDLE_DIR/bundle.sha256" "$KST_STAGED_DIR/bundle.sha256" || exit 0
 (cd "$BUNDLE_DIR" && sha256sum -c bundle.sha256 >/dev/null 2>&1) || exit 0
@@ -30,11 +44,6 @@ while read -r digest relative; do
   esac
 done < "$BUNDLE_DIR/bundle.sha256"
 [ "$manager_view_valid" = 1 ] || exit 0
-
-[ "$(sed -n '1p' "$TS_DIR/run/wanted" 2>/dev/null)" = 1 ] || exit 0
-[ "$(sed -n '1p' "$TS_DIR/run/lifecycle" 2>/dev/null)" = running ] || exit 0
-[ -S "$TS_DIR/run/tailscaled.sock" ] || exit 0
-"$BUNDLE_DIR/bin/tailscale" --socket="$TS_DIR/run/tailscaled.sock" ip -4 >/dev/null 2>&1 || exit 0
 
 rm -f "$MODDIR/update" || exit 0
 rm -rf "$KST_STAGED_DIR"

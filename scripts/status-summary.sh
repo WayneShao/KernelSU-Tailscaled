@@ -4,12 +4,22 @@
 MODDIR=${MODDIR:-/data/adb/modules/kernelsu-tailscaled}
 TS_DIR=${TS_DIR:-/data/adb/kernelsu-tailscaled}
 KST_STAGED_DIR=${KST_STAGED_DIR:-/data/adb/modules_update/kernelsu-tailscaled}
-SUMMARY_BASE=${SUMMARY_BASE:-Tailscale service with KernelSU WebUI}
+KST_BUSYBOX=${KST_BUSYBOX:-/data/adb/ksu/bin/busybox}
+KST_CLI_TIMEOUT=${KST_CLI_TIMEOUT:-3}
 
 summary_file() {
   file=$1
   [ -f "$file" ] || return 0
   description=$2
+  unchanged=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      description=*)
+        [ "${line#description=}" = "$description" ] || { unchanged=0; break; }
+        unchanged=1 ;;
+    esac
+  done < "$file"
+  [ "$unchanged" = 1 ] && return 0
   temporary="$file.tmp.$$"
   awk -v description="$description" '
     /^description=/ { print "description=" description; found=1; next }
@@ -42,9 +52,18 @@ case "$lifecycle" in
 esac
 ip='not ready'
 cli="$ENGINE_DIR/bin/tailscale"
-if [ -x "$cli" ]; then
-  candidate=$($cli --socket="$TS_DIR/run/tailscaled.sock" ip -4 2>/dev/null | head -n 1)
-  case "$candidate" in [0-9]*.[0-9]*.[0-9]*.[0-9]*) ip=$candidate ;; esac
+if [ -S "$TS_DIR/run/tailscaled.sock" ] && [ -x "$cli" ]; then
+  case "$lifecycle" in
+    running|degraded)
+      candidate=$(
+        if [ -x "$KST_BUSYBOX" ]; then
+          "$KST_BUSYBOX" timeout -s KILL "$KST_CLI_TIMEOUT" "$cli" --socket="$TS_DIR/run/tailscaled.sock" ip -4
+        else
+          timeout -s KILL "$KST_CLI_TIMEOUT" "$cli" --socket="$TS_DIR/run/tailscaled.sock" ip -4
+        fi 2>/dev/null | head -n 1
+      )
+      case "$candidate" in [0-9]*.[0-9]*.[0-9]*.[0-9]*) ip=$candidate ;; esac ;;
+  esac
 fi
 ui='UI unavailable'
 [ -S "$TS_DIR/run/tailscaled.sock" ] && ui='UI ready'
@@ -53,5 +72,5 @@ if [ -f "$KST_STAGED_DIR/module.prop" ]; then
   staged=$(sed -n 's/^version=//p' "$KST_STAGED_DIR/module.prop" 2>/dev/null | head -n 1)
   [ -n "$staged" ] && pending=" | update pending reboot: $staged"
 fi
-summary="[$(date '+%H:%M') | $state] Tailscale($(sanitize "$version")) | $(sanitize "$ip") | $ui$pending"
+summary="[$state] Tailscale($(sanitize "$version")) | $(sanitize "$ip") | $ui$pending"
 summary_file "$MODDIR/module.prop" "$summary"
