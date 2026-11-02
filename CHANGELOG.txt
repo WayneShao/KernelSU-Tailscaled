@@ -1,3 +1,15 @@
+Unreleased
+
+- Reduce idle supervisor CPU overhead by reading process records and Linux
+  process metadata with shell builtins, avoiding repeated Android property
+  lookups and redundant directory/lock setup.
+- Keep process recovery active before login without background route or peer
+  health probes. Refresh Manager descriptions and pending hot-install checks
+  about once a minute; do not rewrite unchanged descriptions. Bound IPv4 CLI
+  queries and skip them when the service is stopped or its socket is absent.
+- Defer expensive pending-install integrity hashes until the running daemon
+  reports an IPv4 address, retaining every integrity check before finalization.
+
 v2.0.5
 
 - Fix native Android control/UDP socket routing using the official interface

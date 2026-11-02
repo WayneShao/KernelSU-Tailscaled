@@ -33,6 +33,9 @@ if name == 'tailscaled':
     Path(option('--state')).touch()
     serve(sock)
 elif name == 'tailscale':
+    if not any(command in args for command in ('web', 'version')):
+        with (root / 'cli-calls').open('a') as stream:
+            stream.write(json.dumps(args) + '\n')
     if 'version' in args:
         print('1.102.3')
     elif 'web' in args:
@@ -48,6 +51,10 @@ elif name == 'tailscale':
         print((root / 'status.json').read_text())
     elif 'prefs' in args:
         print((root / 'prefs.json').read_text())
+    elif 'ip' in args:
+        for address in json.loads((root / 'status.json').read_text())['TailscaleIPs']:
+            if ':' not in address:
+                print(address)
     elif 'set' in args:
         with (root / 'sets').open('a') as stream:
             stream.write(json.dumps(args) + '\n')
