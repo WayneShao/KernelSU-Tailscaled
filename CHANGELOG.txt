@@ -1,4 +1,14 @@
-v2.1.1 (bioluks fork)
+v2.1.2 (bioluks fork)
+
+- Include the combined English/Chinese, Headscale, idle-CPU and Taildrop changes
+  described below. Preserve the module ID, login, preferences and queued files.
+- Fix the CI panel-recovery test to wait for the replacement socket, not merely
+  a new PID. Exercise delayed listener startup without changing runtime code.
+- Advance to versionCode 20000021 and publish from a new tag; the unpublished
+  v2.1.1 tag remains unchanged after its CI recovery-test race.
+- See docs/releases/v2.1.2.md for installation, verification and limitations.
+
+v2.1.1 (unpublished candidate; CI recovery-test race)
 
 - Publish the combined English/Chinese, Headscale, idle-CPU and Taildrop changes
   from all-features-merged as an installable ARM/ARM64 fork release.

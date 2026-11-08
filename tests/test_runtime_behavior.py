@@ -224,6 +224,7 @@ class RuntimeBehaviorTests(unittest.TestCase):
 
     def test_logged_out_idle_avoids_cli_and_network_probes_but_recovers_panel(self):
         self.write_status(backend='NeedsLogin', peers=False, TailscaleIPs=[])
+        (self.root / 'web-start-delay').write_text('0.5')
         self.start()
         time.sleep(0.5)
         calls = (self.root / 'cli-calls').read_text()
@@ -235,12 +236,15 @@ class RuntimeBehaviorTests(unittest.TestCase):
         os.kill(old_pid, signal.SIGKILL)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
-            if record.exists() and int(record.read_text().splitlines()[0]) != old_pid:
-                break
+            try:
+                if int(record.read_text().splitlines()[0]) != old_pid:
+                    with socket.create_connection(('127.0.0.1', self.port), timeout=0.2):
+                        break
+            except (FileNotFoundError, ConnectionRefusedError, TimeoutError):
+                pass
             time.sleep(0.05)
-        self.assertNotEqual(old_pid, int(record.read_text().splitlines()[0]))
-        with socket.create_connection(('127.0.0.1', self.port), timeout=1):
-            pass
+        else:
+            self.fail('Official web panel did not recover within 5 seconds')
         os.kill(int((self.state / 'run/tailscaled.pid').read_text().splitlines()[0]), signal.SIGKILL)
         deadline = time.monotonic() + 7
         while time.monotonic() < deadline:

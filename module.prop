@@ -1,7 +1,7 @@
 id=kernelsu-tailscaled
 name=KernelSU-Tailscaled
-version=2.1.1
-versionCode=20000020
+version=2.1.2
+versionCode=20000021
 author=bioluks; based on WayneShao, ryukora and ANASFANANI
 description=Independent Tailscale module with KernelSU WebUI, isolated state, and explicit migration.
 updateJson=https://raw.githubusercontent.com/bioluks/KernelSU-Tailscaled/all-features-merged/update-kernelsu.json

@@ -39,6 +39,8 @@ elif name == 'tailscale':
     if 'version' in args:
         print('1.102.3')
     elif 'web' in args:
+        if (root / 'web-start-delay').exists():
+            time.sleep(float((root / 'web-start-delay').read_text()))
         sock = socket.socket()
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         host, port = option('--listen').split(':')

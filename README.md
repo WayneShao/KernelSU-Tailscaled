@@ -10,10 +10,10 @@ Run the official Tailscale daemon on rooted Android without occupying Android's
 VPN slot. KernelSU-first module with a local WebUI, serialized lifecycle control,
 diagnostic health checks, explicit legacy migration, and verified runtime updates.
 
-This is **bioluks's fork**, maintained on **all-features-merged**. Version **2.1.1**
+This is **bioluks's fork**, maintained on **all-features-merged**. Version **2.1.2**
 combines the English-default WebUI, Chinese language switch, Headscale sign-in,
 idle supervisor CPU improvements and Taildrop receiving fixes. See the
-[2.1.1 release notes](docs/releases/v2.1.1.md).
+[2.1.2 release notes](docs/releases/v2.1.2.md).
 
 Download the [latest published stable release](https://github.com/bioluks/KernelSU-Tailscaled/releases/latest).
 The legacy Magisk-Tailscaled v1 release and update channel are retired. Only the
@@ -66,7 +66,7 @@ module. The ID and persistent data directory are unchanged; do not uninstall or
 delete state first. The fork ZIP switches subsequent module update checks to
 this repository. Upstream installations do not automatically discover this fork;
 the first switch is a manual ZIP install. This includes the private `2.1.1-dev.1`
-combined build (`versionCode=20000019`); release 2.1.1 advances to 20000020.
+combined build (`versionCode=20000019`); release 2.1.2 advances to 20000021.
 
 ## WebUI Language And Headscale
 
