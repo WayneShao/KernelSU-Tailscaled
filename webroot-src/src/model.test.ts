@@ -28,6 +28,7 @@ describe("parseRuntimeStatus", () => {
       lifecycle: "running",
       moduleVersion: "2.0.0-beta.1",
       tailscaleVersion: "1.102.3",
+      taildrop: { directory: "/sdcard/Download", receiver: "running" },
     });
   });
 
@@ -93,6 +94,8 @@ describe("parseRuntimeStatus", () => {
 
   it.each([
     { schemaVersion: 1 }, { lifecycle: "fictional" }, { runtime: {} },
+    { taildrop: undefined }, { taildrop: { directory: 42, receiver: "running" } },
+    { taildrop: { directory: "/sdcard/Download", receiver: "unhealthy" } },
     { diagnostics: [{ code: "x", severity: "fatal", message: "bad" }] },
     { tailscale: { BackendState: "Running", Health: [42] } },
   ])("rejects malformed schema fields: %j", (change) => {

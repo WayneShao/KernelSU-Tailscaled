@@ -1,6 +1,6 @@
 #!/system/bin/sh
-# Android mksh, BusyBox ash, and the test shell support function-local variables.
-# shellcheck disable=SC3043
+# Android mksh and BusyBox ash support local, -ef and read -d; dash uses a fallback.
+# shellcheck disable=SC3043,SC3013,SC3045
 
 SCRIPT_DIR=$(CDPATH='' cd -- "${SCRIPT_DIR:-${0%/*}}" 2>/dev/null && pwd -P)
 BUNDLE_DIR=${BUNDLE_DIR:-${SCRIPT_DIR%/tailscale/scripts}}
@@ -22,10 +22,12 @@ SUPERVISOR_SCRIPT="$SCRIPT_DIR/tailscale-supervisor"
 DAEMON_SCRIPT="$SCRIPT_DIR/tailscale-daemon"
 WEB_SCRIPT="$SCRIPT_DIR/tailscale-web"
 TUNNEL_SCRIPT="$SCRIPT_DIR/tailscale-tunnel"
+TAILDROP_SCRIPT="$SCRIPT_DIR/tailscale-taildrop"
 SUPERVISOR_PID="$RUN_DIR/supervisor.pid"
 DAEMON_PID="$RUN_DIR/tailscaled.pid"
 WEB_PID="$RUN_DIR/web.pid"
 TUNNEL_PID="$RUN_DIR/tunnel.pid"
+TAILDROP_PID="$RUN_DIR/taildrop.pid"
 KST_SHELL=${KST_SHELL:-/system/bin/sh}
 KST_BUSYBOX=${KST_BUSYBOX:-/data/adb/ksu/bin/busybox}
 KST_LOCK_TIMEOUT=${KST_LOCK_TIMEOUT:-15}
@@ -36,6 +38,13 @@ KST_STAGED_DIR=${KST_STAGED_DIR:-/data/adb/modules_update/kernelsu-tailscaled}
 export BUNDLE_DIR MODDIR TS_DIR KST_SHELL KST_BUSYBOX
 umask 077
 
+# Detect NUL-delimited read once; Android can inspect argv without launching tr.
+NUL_READ=0
+if (IFS= read -r -d x value <<'END'
+x
+END
+) 2>/dev/null; then NUL_READ=1; fi
+
 MODE=native
 TUN_NAME=tailscale0
 TAILSCALE_PORT=41641
@@ -45,6 +54,8 @@ CONTROL_PROXY=
 DEVICE_HOSTNAME=
 SUPERVISOR_INTERVAL=5
 RESTART_BACKOFF_MAX=60
+TAILDROP_DIR=/sdcard/Download
+. "$SCRIPT_DIR/taildrop-lib.sh"
 
 ensure_dirs() {
   mkdir -p "$TS_DIR" "$RUN_DIR" "$LOG_DIR" "$CONFIG_DIR" || return 1
@@ -66,18 +77,21 @@ awk_command() {
 
 with_control_lock() (
   exec 8>&-
-  ensure_dirs || exit 1
+  [ -d "$RUN_DIR" ] && [ -d "$LOG_DIR" ] && [ -d "$CONFIG_DIR" ] || ensure_dirs || exit 1
   local expected actual deadline
-  expected=$(stat -Lc '%d:%i' "$RUN_DIR/control.lock" 2>/dev/null)
-  actual=$(stat -Lc '%d:%i' /proc/self/fd/9 2>/dev/null 9>&9)
-  if [ "${KST_LOCK_HELD:-}" = 1 ] && [ -n "$expected" ] && [ "$actual" = "$expected" ]; then
-    "$@" 9>&9
-    exit $?
+  if [ "${KST_LOCK_HELD:-}" = 1 ]; then
+    expected=$(stat -Lc '%d:%i' "$RUN_DIR/control.lock" 2>/dev/null)
+    actual=$(stat -Lc '%d:%i' /proc/self/fd/9 2>/dev/null 9>&9)
+    if [ -n "$expected" ] && [ "$actual" = "$expected" ]; then
+      "$@" 9>&9
+      exit $?
+    fi
   fi
   unset KST_LOCK_HELD
   exec 9>"$RUN_DIR/control.lock" || exit 1
-  deadline=$(($(date +%s) + KST_LOCK_TIMEOUT))
+  deadline=
   until flock_command -n 9; do
+    [ -n "$deadline" ] || deadline=$(($(date +%s) + KST_LOCK_TIMEOUT))
     if [ "$(date +%s)" -ge "$deadline" ]; then
       echo 'Runtime control lock timed out' >&2
       exit 75
@@ -110,6 +124,8 @@ valid_loopback() {
 load_config() {
   local config="$CONFIG_DIR/module.conf" line key value
   CONFIG_ERROR=
+  TAILDROP_DIR=/sdcard/Download
+  TAILDROP_CONFIG_ERROR=
   [ -f "$config" ] || config="$BUNDLE_DIR/tailscale/config/module.conf"
   [ -f "$config" ] || { CONFIG_ERROR='Configuration file is missing'; return 1; }
   while IFS= read -r line || [ -n "$line" ]; do
@@ -132,6 +148,9 @@ load_config() {
         [ "${#value}" -le 63 ] || { CONFIG_ERROR='DEVICE_HOSTNAME exceeds DNS label limit'; return 1; }; DEVICE_HOSTNAME=$value ;;
       SUPERVISOR_INTERVAL) valid_number "$value" 1 300 || { CONFIG_ERROR='Invalid SUPERVISOR_INTERVAL'; return 1; }; SUPERVISOR_INTERVAL=$value ;;
       RESTART_BACKOFF_MAX) valid_number "$value" 1 300 || { CONFIG_ERROR='Invalid RESTART_BACKOFF_MAX'; return 1; }; RESTART_BACKOFF_MAX=$value ;;
+      TAILDROP_DIR)
+        if valid_taildrop_directory "$value"; then TAILDROP_DIR=$value
+        else TAILDROP_CONFIG_ERROR='Invalid TAILDROP_DIR; choose a folder below an Android shared-storage root'; fi ;;
       *) CONFIG_ERROR='Unknown configuration key'; return 1 ;;
     esac
   done < "$config"
@@ -157,29 +176,51 @@ log() {
 read_pid() {
   local pid
   [ -r "$1" ] || return 1
-  pid=$(sed -n '1p' "$1")
+  IFS= read -r pid < "$1" || return 1
   case "$pid" in '' | *[!0-9]*) return 1 ;; esac
   [ "$pid" -gt 1 ] || return 1
   printf '%s\n' "$pid"
 }
 
 process_starttime() {
-  # comm may contain spaces or parentheses; starttime is field 20 after it.
-  # shellcheck disable=SC2016
-  sed 's/^.*) //' "/proc/$1/stat" 2>/dev/null | awk_command '$1 != "Z" {print $20}'
+  # Strip through the final comm delimiter; comm can contain spaces and ')'.
+  local snapshot
+  IFS= read -r snapshot < "/proc/$1/stat" 2>/dev/null || return 1
+  snapshot=${snapshot##*) }
+  local state="${snapshot%% *}" field=1
+  case "$state" in Z | X) return 1 ;; esac
+  while [ "$field" -lt 20 ]; do
+    case "$snapshot" in *' '*) snapshot=${snapshot#* } ;; *) return 1 ;; esac
+    field=$((field + 1))
+  done
+  PROCESS_STARTTIME=${snapshot%% *}
 }
 
 pid_matches() {
-  local pid="$1" expected="$2" required_arg="${3:-}" start="${4:-}" executable="${5:-}"
+  local pid="$1" expected="$2" required_arg="${3:-}" start="${4:-}" executable="${5:-}" arguments argument matched=0 required_matched=0 newline='
+'
   case "$pid" in '' | *[!0-9]*) return 1 ;; esac
   [ -r "/proc/$pid/cmdline" ] || return 1
-  [ -n "$(process_starttime "$pid")" ] || return 1
-  if [ -n "$start" ]; then [ "$(process_starttime "$pid")" = "$start" ] || return 1; fi
-  if [ -n "$executable" ]; then [ "$(readlink "/proc/$pid/exe")" = "$executable" ] || return 1; fi
-  tr '\000' '\n' < "/proc/$pid/cmdline" | grep -Fqx -- "$expected" || {
-    [ "$(readlink "/proc/$pid/exe" 2>/dev/null)" = "$(readlink -f "$expected")" ] || return 1
-  }
-  if [ -n "$required_arg" ]; then tr '\000' '\n' < "/proc/$pid/cmdline" | grep -Fqx -- "$required_arg" || return 1; fi
+  process_starttime "$pid" || return 1
+  [ -z "$start" ] || [ "$PROCESS_STARTTIME" = "$start" ] || return 1
+  if [ -n "$executable" ]; then [ "/proc/$pid/exe" -ef "$executable" ] || return 1; fi
+  if [ "$NUL_READ" = 1 ]; then
+    while IFS= read -r -d '' argument; do
+      [ "$argument" != "$expected" ] || matched=1
+      [ "$argument" != "$required_arg" ] || required_matched=1
+    done < "/proc/$pid/cmdline"
+    if [ "$matched" != 1 ]; then [ "/proc/$pid/exe" -ef "$expected" ] || return 1; fi
+    [ -z "$required_arg" ] || [ "$required_matched" = 1 ] || return 1
+  else
+    arguments=$(tr '\000' '\n' < "/proc/$pid/cmdline") || return 1
+    case "$newline$arguments$newline" in
+      *"$newline$expected$newline"*) ;;
+      *) [ "/proc/$pid/exe" -ef "$expected" ] || return 1 ;;
+    esac
+    if [ -n "$required_arg" ]; then
+      case "$newline$arguments$newline" in *"$newline$required_arg$newline"*) ;; *) return 1 ;; esac
+    fi
+  fi
 }
 
 write_pid() {
@@ -189,7 +230,8 @@ write_pid() {
     sleep 0.05
     count=$((count + 1))
   done
-  start=$(process_starttime "$pid")
+  process_starttime "$pid" || return 1
+  start=$PROCESS_STARTTIME
   executable=$(readlink "/proc/$pid/exe")
   [ -n "$start" ] && [ -n "$executable" ] || return 1
   printf '%s\n' "$pid" "$start" "$executable" "$expected" "$required_arg" > "$pid_file.new"
@@ -198,11 +240,13 @@ write_pid() {
 
 owned_alive() {
   local file="$1" expected="$2" required="${3:-}" pid start executable identity recorded_arg
-  pid=$(read_pid "$file") || return 1
-  start=$(sed -n '2p' "$file")
-  executable=$(sed -n '3p' "$file")
-  identity=$(sed -n '4p' "$file")
-  recorded_arg=$(sed -n '5p' "$file")
+  [ -r "$file" ] || return 1
+  {
+    IFS= read -r pid && IFS= read -r start && IFS= read -r executable &&
+      IFS= read -r identity && IFS= read -r recorded_arg
+  } < "$file" || return 1
+  case "$pid" in '' | *[!0-9]*) return 1 ;; esac
+  [ "$pid" -gt 1 ] || return 1
   case "$start" in '' | *[!0-9]*) return 1 ;; esac
   [ -n "$executable" ] && [ "$identity" = "$expected" ] && [ "$recorded_arg" = "$required" ] || return 1
   pid_matches "$pid" "$expected" "$required" "$start" "$executable"
@@ -323,9 +367,12 @@ diagnostic() {
 }
 
 is_android_runtime() {
-  local sdk
-  sdk=$(bounded 1 getprop ro.build.version.sdk 2>/dev/null) || return 1
-  case "$sdk" in '' | *[!0-9]*) return 1 ;; esac
+  # Platform identity cannot change during a process lifetime.
+  if [ -z "${ANDROID_SDK_CHECKED:-}" ]; then
+    ANDROID_SDK=$(bounded 1 getprop ro.build.version.sdk 2>/dev/null) || ANDROID_SDK=
+    ANDROID_SDK_CHECKED=1
+  fi
+  case "$ANDROID_SDK" in '' | *[!0-9]*) return 1 ;; esac
 }
 
 android_login_diagnostics() {

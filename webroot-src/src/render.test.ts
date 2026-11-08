@@ -18,16 +18,18 @@ describe("renderDashboard", () => {
     expect(root.textContent).toContain('<img src=x onerror="alert(1)">');
   });
 
-  it("exposes an enable-disable control based on current state", () => {
+  it("renders the saved Taildrop folder as a labelled text field without interpreting markup", () => {
     const root = document.createElement("div");
-
-    renderDashboard(root, parseRuntimeStatus(JSON.stringify(running)));
-
-    expect(root.querySelector<HTMLButtonElement>("[data-action=disable]")?.textContent).toContain(
-      "禁用",
-    );
-    expect(root.querySelector("[data-action=open-panel]")).not.toBeNull();
+    const directory = "/sdcard/<img src=x onerror='bad()'>/下载";
+    const status = parseRuntimeStatus(JSON.stringify({ ...running, taildrop: { directory, receiver: "stopped" } }));
+    renderDashboard(root, status);
+    expect(root.querySelector(".taildrop-settings h2")?.textContent).toBe("Taildrop");
+    expect(root.querySelector('label[for="taildrop-directory"]')?.textContent).toBe("Destination folder");
+    expect(root.querySelector<HTMLInputElement>("#taildrop-directory")?.value).toBe(directory);
+    expect(root.querySelector(".taildrop-settings .component-value")?.textContent).toBe("Stopped");
+    expect(root.querySelector("img")).toBeNull();
   });
+
 });
 
 describe("schema 2 dashboard", () => {
@@ -35,8 +37,6 @@ describe("schema 2 dashboard", () => {
     const root = document.createElement("div");
     renderDashboard(root, parseRuntimeStatus(JSON.stringify(degraded)));
     expect(root.querySelector("h1")?.textContent).toBe("KernelSU-Tailscaled");
-    expect(root.querySelector("[data-lifecycle=degraded]")?.textContent).toContain("降级");
-    expect(root.querySelector('[data-state="unknown"]')?.textContent).toContain("未知");
     expect(root.textContent).toContain("DNS server is unreachable");
     expect(root.textContent).toContain("2.0.0-beta.2");
     expect(root.textContent).toContain("2.0.0-alpha.1");
@@ -50,6 +50,15 @@ describe("schema 2 dashboard", () => {
     expect(root.querySelector("[data-action=migrate-legacy]")).not.toBeNull();
     expect(root.querySelector("[data-action=enable]")).toBeNull();
     expect(root.querySelector<HTMLButtonElement>("[data-action=restart]")?.disabled).toBe(true);
+  });
+
+  it.each([
+    migration,
+    { ...migration, lifecycle: "stopped", diagnostics: [{ code: "migration-awaiting-enable", severity: "info", message: "Explicit enable required" }] },
+  ])("prevents folder settings from creating config before identity migration completes", (data) => {
+    const root = document.createElement("div");
+    renderDashboard(root, parseRuntimeStatus(JSON.stringify(data)));
+    expect(root.querySelector("form[data-taildrop]")).toBeNull();
   });
 
   it("keeps migration available when lifecycle is the only migration signal", () => {

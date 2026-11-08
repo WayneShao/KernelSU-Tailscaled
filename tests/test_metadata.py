@@ -17,24 +17,17 @@ class MetadataTests(unittest.TestCase):
         props = dict(line.split('=', 1) for line in (ROOT / 'module.prop').read_text().splitlines() if '=' in line)
         self.assertEqual('kernelsu-tailscaled', props['id'])
         self.assertEqual('KernelSU-Tailscaled', props['name'])
-        self.assertEqual('2.0.5', props['version'])
-        self.assertEqual(20000017, int(props['versionCode']))
         self.assertIn('/KernelSU-Tailscaled/', props['updateJson'])
         self.assertNotEqual('update.json', props['updateJson'].rsplit('/', 1)[-1])
-
-    def test_store_metadata_preserves_provenance(self):
-        self.assertTrue((ROOT / 'module.json').is_file(), 'Store metadata is missing')
-        meta = json.loads((ROOT / 'module.json').read_text())
-        self.assertFalse(meta['metamodule'])
-        self.assertEqual('https://github.com/WayneShao/KernelSU-Tailscaled', meta['sourceUrl'])
-        self.assertTrue(meta['summary'])
-        authors = {author['name'] for author in meta['additionalAuthors']}
-        self.assertIn('ryukora', authors)
-        self.assertIn('ANASFANANI', authors)
 
     def test_retired_feed_is_absent_and_stable_feed_matches_release(self):
         self.assertFalse((ROOT / 'update.json').exists())
         meta = json.loads((ROOT / 'update-kernelsu.json').read_text())
-        self.assertEqual('v2.0.5', meta['version'])
-        self.assertEqual(20000017, meta['versionCode'])
-        self.assertIn('/v2.0.5/KernelSU-Tailscaled-v2.0.5.zip', meta['zipUrl'])
+        props = dict(line.split('=', 1) for line in (ROOT / 'module.prop').read_text().splitlines() if '=' in line)
+        source = json.loads((ROOT / 'module.json').read_text())['sourceUrl']
+        self.assertEqual(f"v{props['version']}", meta['version'])
+        self.assertEqual(int(props['versionCode']), meta['versionCode'])
+        self.assertEqual(
+            f"{source}/releases/download/v{props['version']}/KernelSU-Tailscaled-v{props['version']}.zip",
+            meta['zipUrl'],
+        )

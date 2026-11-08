@@ -29,6 +29,9 @@ class RuntimeBehaviorTests(unittest.TestCase):
             if file.is_file():
                 file.write_bytes(file.read_bytes().replace(b'#!/system/bin/sh', b'#!/bin/sh'))
                 file.chmod(0o755)
+        (self.bundle / 'scripts').mkdir()
+        for name in ['status-summary.sh', 'hot-finalize.sh']:
+            shutil.copy(ROOT / 'scripts' / name, self.bundle / 'scripts' / name)
         (self.bundle / 'module.prop').write_text('version=2.0.0-beta.1\nversionCode=20000001\n')
         (self.mod / 'module.prop').write_text('version=2.0.0-beta.1\n')
         for name in ['tailscale', 'tailscaled', 'ip', 'nc', 'settings', 'getprop']:
@@ -83,6 +86,97 @@ class RuntimeBehaviorTests(unittest.TestCase):
 
     def common(self, body):
         return subprocess.run(['/bin/sh', '-c', '. "$BUNDLE_DIR/tailscale/scripts/common.sh"; ' + body], env=self.env, capture_output=True, text=True, timeout=10)
+
+    def test_unsafe_taildrop_config_does_not_stop_network_runtime(self):
+        self.set_config(self.config + 'TAILDROP_DIR=/data/adb\n')
+        self.start()
+        status = self.status()
+        self.assertEqual('running', status['components']['daemon'])
+        self.assertEqual('stopped', status['taildrop']['receiver'])
+        diagnostics = {item['code'] for item in status['diagnostics']}
+        self.assertIn('taildrop-config-invalid', diagnostics)
+        self.assertEqual(0, self.run_command('stop').returncode)
+
+    def test_taildrop_save_cannot_create_config_during_identity_migration(self):
+        config = self.state / 'config/module.conf'
+        config.unlink()
+        for marker in ['migration-required', 'migration.pending', 'migration-awaiting-enable']:
+            with self.subTest(marker=marker):
+                gate = self.state / marker
+                gate.touch()
+                result = subprocess.run(['/bin/sh', str(self.service), 'taildrop-save-dir'],
+                                        input='/sdcard/Download\n', env=self.env,
+                                        capture_output=True, text=True, timeout=10)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn('Complete identity migration', result.stderr)
+                self.assertFalse(config.exists())
+                gate.unlink()
+
+    def test_taildrop_rejects_unsafe_destination_without_mutating_config(self):
+        original = (self.state / 'config/module.conf').read_bytes()
+        for directory in ['/data/adb', '/dev/null', 'relative/folder', '/sdcard/../data',
+                          '/storage/emulated/0/../../data', '/sdcard/Download\n/data/adb',
+                          '/sdcard/Down\rload', '/sdcard/Down\tload']:
+            with self.subTest(directory=directory):
+                result = subprocess.run(['/bin/sh', str(self.service), 'taildrop-save-dir'],
+                                        input=directory + '\n', env=self.env,
+                                        capture_output=True, text=True, timeout=10)
+                self.assertNotEqual(0, result.returncode)
+                self.assertEqual(original, (self.state / 'config/module.conf').read_bytes())
+                self.assertFalse((self.root / 'starts').exists())
+
+    def test_login_server_preserves_preferences_and_scopes_auth_url(self):
+        self.start()
+        before = json.loads((self.root / 'prefs.json').read_text())
+        result = subprocess.run(['/bin/sh', str(self.service), 'login-server'],
+                                input='https://headscale.example.com:8443\n', env=self.env,
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        response = json.loads(result.stdout)
+        self.assertEqual(response, {'controlURL': 'https://headscale.example.com:8443',
+                                    'authURL': 'https://headscale.example.com:8443/register/TEST_LOGIN_SECRET'})
+        prefs = json.loads((self.root / 'prefs.json').read_text())
+        for key, value in before.items():
+            self.assertEqual(prefs[key], value)
+        status = self.status()
+        self.assertEqual(status['prefs']['ControlURL'], response['controlURL'])
+        self.assertNotIn('TEST_LOGIN_SECRET', json.dumps(status))
+        self.assertNotIn('PRIVATE_SENTINEL', json.dumps(status))
+
+    def test_login_server_rejects_unsafe_input_before_mutation(self):
+        self.start()
+        before = (self.root / 'prefs.json').read_text()
+        for url in ['https://example.com;touch /tmp/INJECTED', 'https://user:pass@example.com',
+                    'https://example.com?token=secret', 'https://example.com#fragment',
+                    'file:///tmp/a', 'https://example.com:65536', 'https://example.com\nextra',
+                    'https://example.com/$(id)', 'https://example.com/"', 'https://example.com/\\']:
+            with self.subTest(url=url):
+                result = subprocess.run(['/bin/sh', str(self.service), 'login-server'],
+                                        input=url + '\n', env=self.env, capture_output=True,
+                                        text=True, timeout=10)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual((self.root / 'prefs.json').read_text(), before)
+
+    def test_login_server_never_starts_disabled_or_migrating_identity(self):
+        before = (self.root / 'prefs.json').read_text()
+        for marker in [self.mod / 'disable', self.state / 'migration-required', self.state / 'migration-awaiting-enable']:
+            marker.touch()
+            result = subprocess.run(['/bin/sh', str(self.service), 'login-server'],
+                                    input='https://headscale.example.com\n', env=self.env,
+                                    capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((self.root / 'starts').exists())
+            self.assertEqual((self.root / 'prefs.json').read_text(), before)
+            marker.unlink()
+
+    def test_login_server_reports_localapi_failure_without_auth_success(self):
+        self.start()
+        (self.root / 'localapi-fail').touch()
+        result = subprocess.run(['/bin/sh', str(self.service), 'login-server'],
+                                input='https://headscale.example.com\n', env=self.env,
+                                capture_output=True, text=True, timeout=10)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, '')
 
     def test_native_health_rejects_missing_interface(self):
         (self.root / 'link').unlink()
@@ -148,6 +242,54 @@ class RuntimeBehaviorTests(unittest.TestCase):
         self.assertIn('migrat', json.dumps(self.status()['diagnostics']).lower())
         self.start()
         self.assertFalse((self.root / 'sets').exists())
+
+    def test_process_identity_handles_parentheses_spaces_and_exact_arguments(self):
+        # Linux comm is allowed to contain both spaces and closing parentheses.
+        proc = subprocess.Popen(['/bin/sh', '-c', 'printf "odd ) name" > /proc/$$/comm; while :; do sleep 1; done'])
+        try:
+            deadline = time.monotonic() + 2
+            while Path(f'/proc/{proc.pid}/comm').read_text().strip() != 'odd ) name' and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertEqual('odd ) name', Path(f'/proc/{proc.pid}/comm').read_text().strip())
+            result = self.common(f'pid_matches {proc.pid} /bin/sh -c && '
+                                 f'! pid_matches {proc.pid} /bin/sh - && '
+                                 f'write_pid "$RUN_DIR/identity.pid" {proc.pid} /bin/sh -c && '
+                                 'owned_alive "$RUN_DIR/identity.pid" /bin/sh -c')
+            self.assertEqual(0, result.returncode, result.stderr)
+        finally:
+            proc.terminate()
+            proc.wait()
+
+    def test_logged_out_idle_avoids_cli_and_network_probes_but_recovers_panel(self):
+        self.write_status(backend='NeedsLogin', peers=False, TailscaleIPs=[])
+        (self.root / 'web-start-delay').write_text('0.5')
+        self.start()
+        time.sleep(0.5)
+        calls = (self.root / 'cli-calls').read_text()
+        time.sleep(3)
+        self.assertEqual(calls, (self.root / 'cli-calls').read_text())
+        self.assertFalse((self.root / 'ip-calls').exists())
+        record = self.state / 'run/web.pid'
+        old_pid = int(record.read_text().splitlines()[0])
+        os.kill(old_pid, signal.SIGKILL)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                if int(record.read_text().splitlines()[0]) != old_pid:
+                    with socket.create_connection(('127.0.0.1', self.port), timeout=0.2):
+                        break
+            except (FileNotFoundError, ConnectionRefusedError, TimeoutError):
+                pass
+            time.sleep(0.05)
+        else:
+            self.fail('Official web panel did not recover within 5 seconds')
+        os.kill(int((self.state / 'run/tailscaled.pid').read_text().splitlines()[0]), signal.SIGKILL)
+        deadline = time.monotonic() + 7
+        while time.monotonic() < deadline:
+            if len((self.root / 'starts').read_text().splitlines()) > 1:
+                break
+            time.sleep(0.05)
+        self.assertEqual(2, len((self.root / 'starts').read_text().splitlines()))
 
     def test_pid_starttime_prevents_reused_pid_termination(self):
         proc = subprocess.Popen(['/bin/sleep', '30'])

@@ -23,7 +23,7 @@ class StoreReleaseTests(unittest.TestCase):
         self.path = Path(self.temp.name) / "KernelSU-Tailscaled-v2.0.0.zip"
         entries = good_entries()
         entries["module.prop"] = entries["module.prop"].replace(b"version=1.102.3.1", b"version=2.0.0")
-        entries["module.json"] = b'{"metamodule":false,"sourceUrl":"https://github.com/WayneShao/KernelSU-Tailscaled"}\n'
+        entries["module.json"] = json.dumps({"metamodule": False, "sourceUrl": f"https://github.com/{self.store.SOURCE_REPO}"}).encode()
         write_zip(self.path, with_bundles(entries))
         self.release = {
             "tag_name": "v2.0.0", "draft": False, "prerelease": False, "immutable": True,

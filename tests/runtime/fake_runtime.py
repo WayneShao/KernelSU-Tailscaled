@@ -33,9 +33,14 @@ if name == 'tailscaled':
     Path(option('--state')).touch()
     serve(sock)
 elif name == 'tailscale':
+    if not any(command in args for command in ('web', 'version')):
+        with (root / 'cli-calls').open('a') as stream:
+            stream.write(json.dumps(args) + '\n')
     if 'version' in args:
         print('1.102.3')
     elif 'web' in args:
+        if (root / 'web-start-delay').exists():
+            time.sleep(float((root / 'web-start-delay').read_text()))
         sock = socket.socket()
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         host, port = option('--listen').split(':')
@@ -48,6 +53,27 @@ elif name == 'tailscale':
         print((root / 'status.json').read_text())
     elif 'prefs' in args:
         print((root / 'prefs.json').read_text())
+    elif 'ip' in args:
+        for address in json.loads((root / 'status.json').read_text())['TailscaleIPs']:
+            if ':' not in address:
+                print(address)
+    elif 'localapi' in args:
+        method, endpoint, *body = args[args.index('localapi') + 1:]
+        if (root / 'localapi-fail').exists():
+            sys.exit(1)
+        if method == 'PATCH' and endpoint == '/localapi/v0/prefs':
+            patch = json.loads(body[0])
+            prefs = json.loads((root / 'prefs.json').read_text())
+            prefs.update({key: value for key, value in patch.items() if not key.endswith('Set')})
+            (root / 'prefs.json').write_text(json.dumps(prefs))
+            print(json.dumps(prefs))
+        elif method == 'POST' and endpoint == '/localapi/v0/login-interactive':
+            status = json.loads((root / 'status.json').read_text())
+            server = json.loads((root / 'prefs.json').read_text())['ControlURL']
+            status.update(BackendState='NeedsLogin', AuthURL=server + '/register/TEST_LOGIN_SECRET')
+            (root / 'status.json').write_text(json.dumps(status))
+        elif method != 'POST' or endpoint != '/localapi/v0/start':
+            sys.exit(2)
     elif 'set' in args:
         with (root / 'sets').open('a') as stream:
             stream.write(json.dumps(args) + '\n')

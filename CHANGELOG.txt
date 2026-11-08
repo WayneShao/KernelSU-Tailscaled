@@ -1,3 +1,89 @@
+v2.2.0 (bioluks fork)
+
+- Automatically save Taildrop files to /sdcard/Download or a shared-storage
+  destination selected in the English/Chinese WebUI.
+- Use one event-driven official Tailscale receiver, not periodic retrieval.
+  Preserve existing files with numbered duplicate names and keep failed files
+  queued privately. Retain the selected folder across restarts and upgrades.
+- Supervise receiver startup, stop and recovery independently of the connection.
+- Verify on rooted Android with SELinux enforcing: default and WebUI-selected
+  Unicode/quoted folders, duplicate rename, restart persistence, receiver crash
+  recovery and queued delivery after a destination failure. Preserve login state
+  and exact network preferences. See docs/releases/v2.2.0.md.
+
+v2.1.2 (bioluks fork)
+
+- Include the combined English/Chinese, Headscale, idle-CPU and Taildrop changes
+  described below. Preserve the module ID, login, preferences and queued files.
+- Fix the CI panel-recovery test to wait for the replacement socket, not merely
+  a new PID. Exercise delayed listener startup without changing runtime code.
+- Advance to versionCode 20000021 and publish from a new tag; the unpublished
+  v2.1.1 tag remains unchanged after its CI recovery-test race.
+- See docs/releases/v2.1.2.md for installation, verification and limitations.
+
+v2.1.1 (unpublished candidate; CI recovery-test race)
+
+- Publish the combined English/Chinese, Headscale, idle-CPU and Taildrop changes
+  from all-features-merged as an installable ARM/ARM64 fork release.
+- Default the WebUI to English while retaining Simplified Chinese and a saved
+  language selector. Add explicit Headscale/custom-server sign-in.
+- Reduce idle supervisor CPU and redundant Manager metadata work without
+  removing process recovery or pending-install integrity checks.
+- Initialize Taildrop's private persistent inbox in native and userspace modes;
+  retain the existing login, preferences and queued files across restarts.
+- Point module updates, source links and downloads at bioluks/KernelSU-Tailscaled.
+  Preserve upstream credits, module ID and persistent data. VersionCode 20000020
+  upgrades the private 2.1.1-dev.1 build without a new login.
+- Update development-only Vite/Vitest tooling and affected transitive packages;
+  the release dependency audit reports no known vulnerabilities.
+- See docs/releases/v2.1.1.md for installation, verification and limitations.
+
+v2.1.1-dev.1 (local integration; not published)
+
+- Combine feature/english-language-switch-headscale, fix/idle-battery-overhead,
+  and fix/taildrop-state-directory in one private upgrade with versionCode
+  20000019. No logout, login, control-server change, or Android reboot.
+- Verify the same node ID, IPs, exact state, preferences, and configuration after
+  installation. All runtime components run; existing DNS warnings remain.
+- Verify 154 Linux tests, 69 frontend tests, 18 browser tests, ShellCheck, and all
+  three package variants. Installed supervisor CPU: 0.27 CPU-seconds/60.57s;
+  unchanged Manager metadata. English/Chinese persistence and Headscale field
+  verified against a read-only browser bridge; installed UI hashes match.
+- Post-install Mac-to-phone Taildrop transfer remains unverified: Mac reports
+  coordination-server disconnection, unanswered peer/DERP probes and no UDP.
+  The installed daemon has the explicit private --statedir; login is retained.
+
+- Fix Taildrop receiving by passing the private persistent state directory
+  explicitly to tailscaled in native and userspace modes. Keep the existing
+  identity file and preferences; queue files privately until `tailscale file get`.
+- Document the native-mode Taildrop inbox and module-specific root-shell commands.
+- Verify real Tailscale 1.104.2 transfers with Headscale 0.29.6: reproduce the
+  pre-fix PeerAPI 500; receive and retrieve in both modes across daemon restarts
+  with identity/preferences retained; verify outbound transfer under mksh.
+- Confirm on Android with SELinux enforcing: receive from Mac, retain the inbox
+  across service restart, retrieve into shared Downloads, and send back to Mac
+  with matching SHA-256 and unchanged identity/preferences.
+  Verify a separate 3.36 GB transfer with a matching SHA-256 checksum.
+
+- Reduce idle supervisor CPU overhead by reading process records and Linux
+  process metadata with shell builtins, avoiding repeated Android property
+  lookups and redundant directory/lock setup.
+- Keep process recovery active before login without background route or peer
+  health probes. Refresh Manager descriptions and pending hot-install checks
+  about once a minute; do not rewrite unchanged descriptions. Bound IPv4 CLI
+  queries and skip them when the service is stopped or its socket is absent.
+- Defer expensive pending-install integrity hashes until the running daemon
+  reports an IPv4 address, retaining every integrity check before finalization.
+
+v2.1.0
+
+- Default the WebUI to English, retaining Simplified Chinese through a persistent
+  language selector on every page.
+- Add a Headscale/custom control-server field and explicit sign-in flow. Preserve
+  existing DNS, route and hostname preferences; require confirmation before
+  changing servers. Keep registration URLs out of ordinary status and logs.
+- See docs/releases/v2.1.0.md for setup and upgrade notes.
+
 v2.0.5
 
 - Fix native Android control/UDP socket routing using the official interface

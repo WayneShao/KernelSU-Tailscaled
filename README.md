@@ -1,8 +1,8 @@
-[![WayneShao - KernelSU-Tailscaled](https://img.shields.io/static/v1?label=WayneShao&message=KernelSU-Tailscaled&color=blue&logo=github)](https://github.com/WayneShao/KernelSU-Tailscaled)
-[![Publish Verified Source Release](https://github.com/WayneShao/KernelSU-Tailscaled/actions/workflows/publish-source.yml/badge.svg)](https://github.com/WayneShao/KernelSU-Tailscaled/actions/workflows/publish-source.yml)
-[![Total downloads](https://img.shields.io/github/downloads/WayneShao/KernelSU-Tailscaled/total)](https://github.com/WayneShao/KernelSU-Tailscaled/releases)
-[![Latest stable release](https://img.shields.io/github/v/release/WayneShao/KernelSU-Tailscaled?color=blue)](https://github.com/WayneShao/KernelSU-Tailscaled/releases/latest)
-[![Open issues](https://img.shields.io/github/issues/WayneShao/KernelSU-Tailscaled)](https://github.com/WayneShao/KernelSU-Tailscaled/issues)
+[![bioluks - KernelSU-Tailscaled](https://img.shields.io/static/v1?label=bioluks&message=KernelSU-Tailscaled&color=blue&logo=github)](https://github.com/bioluks/KernelSU-Tailscaled)
+[![Build, Verify, and Release](https://github.com/bioluks/KernelSU-Tailscaled/actions/workflows/release.yml/badge.svg?branch=all-features-merged)](https://github.com/bioluks/KernelSU-Tailscaled/actions/workflows/release.yml)
+[![Total downloads](https://img.shields.io/github/downloads/bioluks/KernelSU-Tailscaled/total)](https://github.com/bioluks/KernelSU-Tailscaled/releases)
+[![Latest stable release](https://img.shields.io/github/v/release/bioluks/KernelSU-Tailscaled?color=blue)](https://github.com/bioluks/KernelSU-Tailscaled/releases/latest)
+[![Open issues](https://img.shields.io/github/issues/bioluks/KernelSU-Tailscaled)](https://github.com/bioluks/KernelSU-Tailscaled/issues)
 
 # KernelSU-Tailscaled
 
@@ -10,33 +10,40 @@ Run the official Tailscale daemon on rooted Android without occupying Android's
 VPN slot. KernelSU-first module with a local WebUI, serialized lifecycle control,
 diagnostic health checks, explicit legacy migration, and verified runtime updates.
 
-**[2.0.5 is the current stable release](https://github.com/WayneShao/KernelSU-Tailscaled/releases/latest).**
+This is **bioluks's fork**, maintained on **all-features-merged**. Version **2.2.0**
+adds automatic Taildrop delivery to a WebUI-selected folder, alongside the
+English-default WebUI, Chinese language switch, Headscale sign-in and idle
+supervisor CPU improvements. See the [2.2.0 release notes](docs/releases/v2.2.0.md).
+
+Download the [latest published stable release](https://github.com/bioluks/KernelSU-Tailscaled/releases/latest).
 The legacy Magisk-Tailscaled v1 release and update channel are retired. Only the
 `kernelsu-tailscaled` module line is maintained. Official store review is separate.
-This is an independent continuation of `ryukora/Magisk-Tailscaled`, not an official
-Tailscale or KernelSU product. The daemon remains the official Tailscale 1.104.2
-binary; this project maintains the Android module integration.
+This fork continues [WayneShao/KernelSU-Tailscaled](https://github.com/WayneShao/KernelSU-Tailscaled),
+based on `ryukora/Magisk-Tailscaled`; it is not an official Tailscale or KernelSU
+product. The daemon remains the official Tailscale 1.104.2 binary; this project
+maintains the Android module integration. No device-specific kernel is included.
 
 ## Identity And Compatibility
 
 | Item | Value |
 | --- | --- |
 | Module ID | `kernelsu-tailscaled` |
-| Source | [WayneShao/KernelSU-Tailscaled](https://github.com/WayneShao/KernelSU-Tailscaled) |
+| Source | [bioluks/KernelSU-Tailscaled](https://github.com/bioluks/KernelSU-Tailscaled) |
 | Persistent data | `/data/adb/kernelsu-tailscaled` |
 | Legacy ID | `magisk-tailscaled` |
 | Legacy data | `/data/adb/tailscale`, read only by explicit migration |
 | Architectures | ARM and ARM64 |
 | Primary manager | KernelSU with WebUI support |
 
-ARM64 testing targets are the maintainer's OnePlus PKX110 and Xiaomi nezha.
-Host tests and package validation do not establish broad Android, Magisk,
-APatch, or userspace-tunnel compatibility. See the verification record
-under `docs/verification` for actual results and remaining limits.
+The combined ARM64 build has been exercised on a OnePlus 9 Pro (LE2123).
+Earlier upstream testing also targeted OnePlus PKX110 and Xiaomi nezha. Host
+tests and package validation do not establish broad Android, Magisk, APatch,
+or userspace-tunnel compatibility. See the release notes and `docs/verification`
+for actual results and remaining limits.
 
 ## Install And Activate
 
-1. Obtain a ZIP from the [current release](https://github.com/WayneShao/KernelSU-Tailscaled/releases/latest).
+1. Obtain a ZIP from the [current release](https://github.com/bioluks/KernelSU-Tailscaled/releases/latest).
    The universal ZIP includes both architectures; an ARM64-only ZIP is also built.
 2. Install the ZIP through KernelSU Manager, or `ksud module install ZIP`.
    The installer verifies the complete bundle, switches the owned runtime, and
@@ -44,14 +51,57 @@ under `docs/verification` for actual results and remaining limits.
    configuration are preserved. No post-install patch script is needed.
 3. Installation starts the new runtime immediately unless an old login still
    requires explicit migration. No script requests or performs an Android reboot.
-4. For a fresh identity, open the official local panel
-   to sign in. For an existing legacy identity, follow the migration below.
+4. Open the module WebUI to sign in. Leave **Control server URL** blank for
+   Tailscale, or enter your Headscale server URL. For an existing legacy identity,
+   follow the migration below before signing in.
 
 Hot installation switches scripts and binaries together and publishes the
 complete manager view from that same ZIP. Reopen an already-open Details page
 to load its new assets. Normal KernelSU module promotion remains compatible with
 the selected runtime. **Apply staged runtime** is also available for a staged
 candidate; routine ZIP installation does not need that extra step.
+
+Existing `kernelsu-tailscaled` users can install this fork's ZIP over their current
+module. The ID and persistent data directory are unchanged; do not uninstall or
+delete state first. The fork ZIP switches subsequent module update checks to
+this repository. Upstream installations do not automatically discover this fork;
+the first switch is a manual ZIP install. This includes the private `2.1.1-dev.1`
+combined build (`versionCode=20000019`); release 2.2.0 advances to 20000024.
+
+## WebUI Language And Headscale
+
+The module WebUI defaults to **English**, regardless of your device language.
+Use **Language → 简体中文** in any page header to switch to Simplified Chinese.
+The choice is remembered in that WebView; if storage is disabled, it lasts only
+for the current session. Raw engine diagnostics and log messages are not translated.
+
+The bundled official Tailscale engine supports Headscale. Under **Sign in /
+Headscale**, enter your server's base URL, for example
+`https://headscale.example.com`, and choose **Connect / sign in**. Confirm the
+server, then open the returned sign-in link and complete registration using your
+Headscale server's instructions. Refresh status afterward. If the server is slow
+to return a link, use **Open full panel** to finish signing in.
+
+Leave the field blank to return to the official Tailscale service. Changing
+servers can disconnect the current network and requires registration on the
+selected server; do this locally, not through a Tailscale-only remote session.
+The module must be enabled and its daemon running. Migration must be completed
+and explicitly enabled first. The URL is saved in Tailscale's persistent
+preferences, retaining hostname, DNS, route and other settings across restarts.
+HTTPS is recommended. HTTP is accepted for private/test servers but is unencrypted.
+Credentials, query parameters and fragments are not accepted in server URLs.
+
+The equivalent root command reads one URL line from standard input:
+
+```sh
+printf '%s\n' 'https://headscale.example.com' | \
+  sh /data/adb/modules/kernelsu-tailscaled/control.sh login-server
+```
+
+Its JSON reply includes the selected `controlURL` and a registration `authURL`
+(empty while pending). Treat the registration URL as sensitive; ordinary status
+and log output continue to redact authentication URLs. No auth key is required
+in the WebUI. See [Headscale client registration](https://headscale.net/stable/usage/connect/android/).
 
 ## Update The Tailscale Engine
 
@@ -65,6 +115,39 @@ activation restores the previous engine and saved identity. Pending recovery
 respects a later stop/disable. Updated engines persist across module installs
 and boot; a newer bundled engine takes precedence. See the
 [v2.0.5 release notes](docs/releases/v2.0.5.md) for validation and limits.
+
+## Taildrop On Android
+
+Taildrop works in native mode; switching to userspace networking is not required.
+Received files are saved automatically to **`/sdcard/Download`** while the module
+is running. In the WebUI, under **Taildrop**, set **Destination folder** and
+choose **Save folder** to use another shared-storage folder. The module creates
+the folder if needed and remembers it across service restarts and module updates.
+Changing folders restarts only the receiver, not Tailscale or your connection.
+
+One supervised `tailscale file get --loop --conflict=rename` process waits for
+file-arrival notifications; no periodic retrieval command or inbox scan is added.
+Existing files are never overwritten: duplicate names receive numbered suffixes.
+If storage is unavailable, locked or full, files remain in the private inbox
+under `/data/adb/kernelsu-tailscaled/files/` until they can be retrieved. The
+WebUI shows receiver availability; **Logs** includes the receiver's output.
+
+Choose a folder under `/sdcard/` or Android's `/storage/` shared storage, not a
+private system directory. If delivery fails, select a writable folder and inspect
+**Logs** before retrying. Do not run a second receiving CLI against the same
+inbox while automatic delivery is active.
+
+To send from the phone, use the module's CLI and socket:
+
+```sh
+TS=/data/adb/kernelsu-tailscaled
+"$TS/current/bin/tailscale" --socket="$TS/run/tailscaled.sock" \
+  file cp /sdcard/Download/example.txt <peer-name-or-tailnet-ip>:
+```
+
+If you use Headscale instead of the official Tailscale service, your server must
+advertise the file-sharing capability. For general Taildrop setup and usage, see
+the [official documentation](https://tailscale.com/docs/features/taildrop).
 
 ## Migrate An Existing Login
 
@@ -113,6 +196,7 @@ CONTROL_PROXY=
 DEVICE_HOSTNAME=
 SUPERVISOR_INTERVAL=5
 RESTART_BACKOFF_MAX=60
+TAILDROP_DIR=/sdcard/Download
 ```
 
 Native mode is explicit. Userspace mode requires the bundled helper and is never
@@ -133,13 +217,33 @@ If process identity checks disagree while the recorded process is still alive,
 the controller retains its record and socket and blocks replacement. It does
 not treat an inconclusive ownership check as proof that the process exited.
 
+The supervisor checks owned processes every `SUPERVISOR_INTERVAL` seconds
+(default: five), including while logged out so the daemon and login panel can
+recover. It does not poll authentication, peer routes, or network health in this
+loop; detailed diagnostics run when requested. Manager descriptions and pending
+hot-install finalization refresh about once a minute, not every health pass.
+Descriptions have no ticking clock and unchanged content is not rewritten.
+IPv4 queries are time-bounded and skipped when the service is not running or
+its socket is missing. Native mode does not mean kernel WireGuard: Tailscale
+still handles encryption in its userspace daemon.
+
+On-device idle profiling (Android mksh, five-second supervision, real logged-out
+daemon and panel in isolated state/ports) measured supervisor plus child CPU
+at 7.73 CPU-seconds per 60.43 seconds before, versus 0.42/60.64 and 0.40/60.38
+after: about 95% less supervisor CPU. The daemon used userspace networking to
+avoid changing the active TUN; the supervisor used the native process-check
+branch. Both fixed samples left Manager metadata unchanged, and killing the
+isolated panel exercised successful HTTP recovery while still logged out.
+This is CPU evidence, not a screen-off battery-life or tunnel-mode benchmark.
+
 ```text
 /data/adb/modules/kernelsu-tailscaled/control.sh
   {enable|disable|toggle|start|stop|restart|status|status-json|logs|
-   web-restart|diagnostics|migration-status|migrate-legacy|apply-staged}
+   web-restart|diagnostics|migration-status|migrate-legacy|apply-staged|login-server}
 ```
 
-The WebUI invokes only a fixed command allowlist. The full official panel binds
+The WebUI invokes only a fixed command allowlist; `login-server` additionally
+accepts one validated HTTP/HTTPS base URL on stdin. The full official panel binds
 to IPv4 loopback. Log output is size-bounded and redacts keys, login URLs and proxy
 credentials. Treat any diagnostics as potentially containing device/network names.
 Uninstall stops owned processes but preserves v2 data. To intentionally discard a
@@ -164,8 +268,9 @@ those tests. Packages normalize LF, ordering, timestamps and executable modes.
 Binary payload manifests and architecture-specific installed-bundle manifests are
 verified independently. CI rebuilds all ZIPs twice and compares their bytes.
 
-Feature branches build artifacts without publishing. `v2.*-*` tags publish as
-prereleases; stable tags additionally require `STABLE_RELEASE_APPROVED=true` and
+The default `all-features-merged` branch, `main` and feature branches build
+artifacts without publishing. `v2.*-*` tags publish as prereleases; stable tags
+additionally require `STABLE_RELEASE_APPROVED=true` and
 the `source-release` environment. Enable repository release immutability before
 tag publication, then set `SOURCE_IMMUTABILITY_CONFIRMED=true` after checking the
 setting with an administrator account. `GITHUB_TOKEN` cannot read that admin-only
@@ -179,7 +284,11 @@ using the original tag and build run ID without rebuilding packages or moving
 the tag. It verifies the successful build's commit and all existing draft assets
 before publishing; already published immutable assets are verified, not replaced.
 
-The official store submission and distribution requirements are documented in
+Fork releases are distributed on this repository's GitHub Releases page. The
+upstream store submission is historical and does not approve this fork; store
+publication remains disabled unless separately reviewed and authorized.
+
+Official store requirements are documented in
 [the research record](docs/research/2026-09-07-kernelsu-store-requirements.md).
 Submission requires manual review and is not performed by the build workflow.
 After approval, configure the store repository's default-branch metadata,
@@ -194,6 +303,8 @@ default download. It never replaces existing assets or tags.
 
 - [Tailscale](https://github.com/tailscale/tailscale): official daemon and CLI.
 - [KernelSU](https://github.com/tiann/KernelSU): root manager and WebUI bridge.
+- [WayneShao/KernelSU-Tailscaled](https://github.com/WayneShao/KernelSU-Tailscaled):
+  upstream module, lifecycle implementation and retained release tooling.
 - [hev-socks5-tunnel](https://github.com/heiher/hev-socks5-tunnel): userspace helper.
 - [ryukora/Magisk-Tailscaled](https://github.com/ryukora/Magisk-Tailscaled),
   ANASFANANI, and prior contributors: original module and retained history.

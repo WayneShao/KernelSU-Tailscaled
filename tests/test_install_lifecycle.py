@@ -34,6 +34,7 @@ class InstallLifecycleTests(unittest.TestCase):
                      "scripts/migrate-legacy.sh", "scripts/runtime-control.sh",
                      "scripts/status-summary.sh", "scripts/hot-finalize.sh",
                      "tailscale/scripts/common.sh", "tailscale/scripts/engine-lib.sh",
+                     "tailscale/scripts/taildrop-lib.sh",
                      "tailscale/scripts/engine-update.sh"):
             target = path / name
             target.parent.mkdir(parents=True, exist_ok=True)

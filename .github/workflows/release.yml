@@ -2,10 +2,10 @@ name: Build, Verify, and Release
 
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: [all-features-merged, main, "feature/**"]
     tags: ["v2.*"]
   pull_request:
-    branches: [main]
+    branches: [all-features-merged, main]
   workflow_dispatch:
 
 permissions:

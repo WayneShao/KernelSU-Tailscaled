@@ -1,4 +1,5 @@
 #!/system/bin/sh
+# shellcheck disable=SC3043
 SCRIPT_DIR=${0%/*}
 . "$SCRIPT_DIR/common.sh"
 ensure_dirs || exit 1
@@ -12,8 +13,12 @@ supervisor_owner=$$
 
 reconcile() {
   # A blocked subshell may outlive the supervisor stopped during an upgrade.
-  [ "$(read_pid "$SUPERVISOR_PID")" = "$supervisor_owner" ] && supervisor_health || return 10
-  if module_disabled || [ "$(sed -n '1p' "$RUN_DIR/wanted" 2>/dev/null)" != 1 ]; then
+  local wanted owner
+  IFS= read -r owner < "$SUPERVISOR_PID" 2>/dev/null || return 10
+  [ "$owner" = "$supervisor_owner" ] && supervisor_health || return 10
+  IFS= read -r wanted < "$RUN_DIR/wanted" 2>/dev/null || wanted=
+  if module_disabled || [ "$wanted" != 1 ]; then
+    "$KST_SHELL" "$TAILDROP_SCRIPT" stop 9>&9 || return 1
     "$KST_SHELL" "$WEB_SCRIPT" stop 9>&9 || return 1
     "$KST_SHELL" "$TUNNEL_SCRIPT" stop 9>&9 || return 1
     "$KST_SHELL" "$DAEMON_SCRIPT" stop 9>&9 || return 1
@@ -21,6 +26,7 @@ reconcile() {
   fi
   if ! load_config; then set_lifecycle failed; log ERROR "$CONFIG_ERROR"; return 1; fi
   if ! daemon_running; then
+    "$KST_SHELL" "$TAILDROP_SCRIPT" stop 9>&9 || return 1
     "$KST_SHELL" "$WEB_SCRIPT" stop 9>&9 || return 1
     "$KST_SHELL" "$TUNNEL_SCRIPT" stop 9>&9 || return 1
     "$KST_SHELL" "$DAEMON_SCRIPT" stop 9>&9 || return 1
@@ -30,6 +36,7 @@ reconcile() {
     fi
     "$KST_SHELL" "$TUNNEL_SCRIPT" start 9>&9 || log WARN 'Userspace helper recovery failed'
     "$KST_SHELL" "$WEB_SCRIPT" start 9>&9 || log WARN 'Official web panel recovery failed'
+    "$KST_SHELL" "$TAILDROP_SCRIPT" start 9>&9 || log WARN 'Taildrop receiver recovery unavailable; inspect logs and shared storage'
     set_lifecycle running
     return 0
   fi
@@ -39,35 +46,50 @@ reconcile() {
     "$KST_SHELL" "$TUNNEL_SCRIPT" start 9>&9 || log WARN 'Userspace helper recovery failed'
   fi
   if ! web_running; then "$KST_SHELL" "$WEB_SCRIPT" start 9>&9 || log WARN 'Official web panel recovery failed'; fi
+  if ! taildrop_health; then
+    "$KST_SHELL" "$TAILDROP_SCRIPT" start 9>&9 || return 1
+  fi
   return 11
 }
 
 backoff=1
-healthy_since=$(date +%s)
+healthy_for=0
+maintenance_in=0
 load_config || true
 while :; do
   with_control_lock reconcile
   result=$?
-  sh "$BUNDLE_DIR/scripts/hot-finalize.sh" >/dev/null 2>&1 || true
-  sh "$BUNDLE_DIR/scripts/status-summary.sh" >/dev/null 2>&1 || true
+  [ "$result" != 10 ] || exit 0
+  # Cosmetic status and staged-install verification are not health checks.
+  if [ "$maintenance_in" -le 0 ]; then
+    if [ -f "$MODDIR/update" ] && [ -d "$KST_STAGED_DIR" ]; then
+      sh "$BUNDLE_DIR/scripts/hot-finalize.sh" >/dev/null 2>&1 || true
+    fi
+    sh "$BUNDLE_DIR/scripts/status-summary.sh" >/dev/null 2>&1 || true
+    maintenance_in=60
+  fi
   case "$result" in
-    10) exit 0 ;;
     11)
-      now=$(date +%s)
-      if [ $((now - healthy_since)) -ge 60 ]; then backoff=1; rm -f "$RUN_DIR/recovery-failure"; fi
-      sleep "$SUPERVISOR_INTERVAL" 8>&- ;;
+      healthy_for=$((healthy_for + SUPERVISOR_INTERVAL))
+      if [ "$healthy_for" -ge 60 ]; then
+        backoff=1
+        [ ! -f "$RUN_DIR/recovery-failure" ] || rm -f "$RUN_DIR/recovery-failure"
+      fi
+      delay=$SUPERVISOR_INTERVAL ;;
     0)
-      healthy_since=$(date +%s)
+      healthy_for=0
       rm -f "$RUN_DIR/recovery-failure"
-      sleep "$backoff" 8>&-
+      delay=$backoff
       backoff=$((backoff * 2))
       [ "$backoff" -le "$RESTART_BACKOFF_MAX" ] || backoff=$RESTART_BACKOFF_MAX ;;
     *)
-      healthy_since=$(date +%s)
+      healthy_for=0
       printf 'process-recovery-failed\n' > "$RUN_DIR/recovery-failure"
       log WARN "Runtime recovery failed; retry in ${backoff}s"
-      sleep "$backoff" 8>&-
+      delay=$backoff
       backoff=$((backoff * 2))
       [ "$backoff" -le "$RESTART_BACKOFF_MAX" ] || backoff=$RESTART_BACKOFF_MAX ;;
   esac
+  sleep "$delay" 8>&-
+  maintenance_in=$((maintenance_in - delay))
 done

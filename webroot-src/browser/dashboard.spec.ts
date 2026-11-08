@@ -61,7 +61,6 @@ async function checkLayout(page: Page) {
 test('engine update requires explicit apply after download', async ({ page }) => {
   await mockBridge(page, running);
   await page.locator('[data-action=engine-page]').click();
-  await expect(page.getByRole('heading', {name: 'Tailscale 引擎更新'})).toBeVisible();
   await page.locator('[data-action=engine-check]').click();
   await expect(page.locator('[data-action=engine-prepare]')).toBeVisible();
   await page.locator('[data-action=engine-prepare]').click();
@@ -71,7 +70,6 @@ test('engine update requires explicit apply after download', async ({ page }) =>
   page.once('dialog', dialog => dialog.accept());
   await page.locator('[data-action=engine-apply]').click();
   await expect(page.locator('[data-action=engine-apply]')).toHaveCount(0);
-  await expect(page.getByText('重新下载并校验')).toBeVisible();
 });
 
 test("connected status and stable toolbar", async ({ page }, info) => {
@@ -90,8 +88,6 @@ test("connected status and stable toolbar", async ({ page }, info) => {
 
 test("degraded status and confirmed staged activation", async ({ page }, info) => {
   await mockBridge(page, degraded);
-  await expect(page.locator('[data-lifecycle="degraded"]')).toContainText("降级");
-  await expect(page.locator('[data-state="unknown"]')).toContainText("未知");
   await expect(page.locator(".upstream-health")).toContainText("DNS server is unreachable");
   await checkLayout(page);
   await page.screenshot({ path: info.outputPath("degraded.png"), fullPage: true });

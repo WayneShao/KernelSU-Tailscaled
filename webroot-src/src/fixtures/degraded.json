@@ -7,6 +7,7 @@
   "tailscaleVersion": "1.102.3",
   "components": {"supervisor":"running","daemon":"running","dataPlane":"unknown","web":"stopped"},
   "runtime": {"activeVersion":"2.0.0-beta.1","stagedVersion":"2.0.0-beta.2","previousVersion":"2.0.0-alpha.1"},
+  "taildrop": {"directory":"/sdcard/Download","receiver":"unknown"},
   "diagnostics": [
     {"code":"native-route-timeout","severity":"warning","message":"Peer route inspection exceeded its time budget"},
     {"code":"upstream-health","severity":"warning","message":"Tailscale reports health warnings; see tailscale.Health"},

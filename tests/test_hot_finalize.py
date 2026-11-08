@@ -69,6 +69,30 @@ class HotFinalizeTests(unittest.TestCase):
         self.assertTrue((self.mod / "update").exists())
         self.assertTrue(self.staged.exists())
 
+    def test_logged_out_runtime_preserves_pending_install_without_hashing(self):
+        # A fresh daemon has no IP yet; integrity checks remain deferred until
+        # readiness succeeds, rather than rereading both bundles every minute.
+        (self.current / "bin/tailscale").write_text("#!/bin/sh\nexit 1\n")
+        commands = Path(self.temp.name) / "commands"
+        commands.mkdir()
+        for name in ("sh", "sed", "timeout"):
+            (commands / name).symlink_to(shutil.which(name))
+        hasher = commands / "sha256sum"
+        sentinel = Path(self.temp.name) / "hashed"
+        hasher.write_text(f"#!/bin/sh\nprintf hashed > '{sentinel}'\nexit 1\n")
+        hasher.chmod(0o755)
+        env = os.environ | {
+            "MODDIR": str(self.mod), "TS_DIR": str(self.state),
+            "KST_STAGED_DIR": str(self.staged), "BUNDLE_DIR": str(self.current),
+            "PATH": str(commands), "KST_BUSYBOX": str(commands / "missing"),
+        }
+        result = subprocess.run([shutil.which("sh"), str(SCRIPT)], env=env,
+                                capture_output=True, text=True)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertFalse(sentinel.exists())
+        self.assertTrue((self.mod / "update").exists())
+        self.assertTrue(self.staged.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

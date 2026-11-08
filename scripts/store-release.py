@@ -13,7 +13,7 @@ import zipfile
 from pathlib import Path
 from urllib.parse import quote
 
-SOURCE_REPO = "WayneShao/KernelSU-Tailscaled"
+SOURCE_REPO = "bioluks/KernelSU-Tailscaled"
 STORE_REPO = "KernelSU-Modules-Repo/kernelsu-tailscaled"
 ZIP_TYPES = {"application/zip", "application/x-zip-compressed"}
 
