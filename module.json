@@ -1,8 +1,9 @@
 {
   "metamodule": false,
   "summary": "Independently maintained Tailscale module with KernelSU WebUI, isolated runtime state, and explicit migration from Magisk-Tailscaled.",
-  "sourceUrl": "https://github.com/WayneShao/KernelSU-Tailscaled",
+  "sourceUrl": "https://github.com/bioluks/KernelSU-Tailscaled",
   "additionalAuthors": [
+    { "type": "add", "name": "WayneShao", "link": "https://github.com/WayneShao" },
     { "type": "add", "name": "ryukora", "link": "https://github.com/ryukora" },
     { "type": "add", "name": "ANASFANANI", "link": "https://github.com/anasfanani" }
   ]

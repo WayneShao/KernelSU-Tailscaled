@@ -31,7 +31,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           [[ "$RELEASE_TAG" =~ ^v2\.[0-9]+\.[0-9]+$ ]]
-          gh release download "$RELEASE_TAG" --repo WayneShao/KernelSU-Tailscaled \
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern "KernelSU-Tailscaled-${RELEASE_TAG}.zip" --dir dist
       - name: Validate and publish to approved distribution repository
         env:

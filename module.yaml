@@ -5,11 +5,13 @@ name: KernelSU-Tailscaled
 summary: Official Tailscale daemon integration for rooted Android with KernelSU WebUI, service health monitoring, and verified in-module engine updates.
 description: README.md
 license: BSD-3-Clause
-homepage: https://github.com/WayneShao/KernelSU-Tailscaled
-support: https://github.com/WayneShao/KernelSU-Tailscaled/issues
+homepage: https://github.com/bioluks/KernelSU-Tailscaled
+support: https://github.com/bioluks/KernelSU-Tailscaled/issues
 tags: [network, vpn, tailscale]
 metamodule: false
 authors:
+  - name: bioluks
+    url: https://github.com/bioluks
   - name: WayneShao
     url: https://github.com/WayneShao
   - name: ryukora

@@ -1,8 +1,8 @@
-[![WayneShao - KernelSU-Tailscaled](https://img.shields.io/static/v1?label=WayneShao&message=KernelSU-Tailscaled&color=blue&logo=github)](https://github.com/WayneShao/KernelSU-Tailscaled)
-[![Publish Verified Source Release](https://github.com/WayneShao/KernelSU-Tailscaled/actions/workflows/publish-source.yml/badge.svg)](https://github.com/WayneShao/KernelSU-Tailscaled/actions/workflows/publish-source.yml)
-[![Total downloads](https://img.shields.io/github/downloads/WayneShao/KernelSU-Tailscaled/total)](https://github.com/WayneShao/KernelSU-Tailscaled/releases)
-[![Latest stable release](https://img.shields.io/github/v/release/WayneShao/KernelSU-Tailscaled?color=blue)](https://github.com/WayneShao/KernelSU-Tailscaled/releases/latest)
-[![Open issues](https://img.shields.io/github/issues/WayneShao/KernelSU-Tailscaled)](https://github.com/WayneShao/KernelSU-Tailscaled/issues)
+[![bioluks - KernelSU-Tailscaled](https://img.shields.io/static/v1?label=bioluks&message=KernelSU-Tailscaled&color=blue&logo=github)](https://github.com/bioluks/KernelSU-Tailscaled)
+[![Build, Verify, and Release](https://github.com/bioluks/KernelSU-Tailscaled/actions/workflows/release.yml/badge.svg?branch=all-features-merged)](https://github.com/bioluks/KernelSU-Tailscaled/actions/workflows/release.yml)
+[![Total downloads](https://img.shields.io/github/downloads/bioluks/KernelSU-Tailscaled/total)](https://github.com/bioluks/KernelSU-Tailscaled/releases)
+[![Latest stable release](https://img.shields.io/github/v/release/bioluks/KernelSU-Tailscaled?color=blue)](https://github.com/bioluks/KernelSU-Tailscaled/releases/latest)
+[![Open issues](https://img.shields.io/github/issues/bioluks/KernelSU-Tailscaled)](https://github.com/bioluks/KernelSU-Tailscaled/issues)
 
 # KernelSU-Tailscaled
 
@@ -10,36 +10,40 @@ Run the official Tailscale daemon on rooted Android without occupying Android's
 VPN slot. KernelSU-first module with a local WebUI, serialized lifecycle control,
 diagnostic health checks, explicit legacy migration, and verified runtime updates.
 
-This source tree targets **2.1.0**, adding an English-default WebUI with a
-language selector and Headscale sign-in. See the [2.1.0 release notes](docs/releases/v2.1.0.md).
+This is **bioluks's fork**, maintained on **all-features-merged**. Version **2.1.1**
+combines the English-default WebUI, Chinese language switch, Headscale sign-in,
+idle supervisor CPU improvements and Taildrop receiving fixes. See the
+[2.1.1 release notes](docs/releases/v2.1.1.md).
 
-Download the [latest published stable release](https://github.com/WayneShao/KernelSU-Tailscaled/releases/latest).
+Download the [latest published stable release](https://github.com/bioluks/KernelSU-Tailscaled/releases/latest).
 The legacy Magisk-Tailscaled v1 release and update channel are retired. Only the
 `kernelsu-tailscaled` module line is maintained. Official store review is separate.
-This is an independent continuation of `ryukora/Magisk-Tailscaled`, not an official
-Tailscale or KernelSU product. The daemon remains the official Tailscale 1.104.2
-binary; this project maintains the Android module integration.
+This fork continues [WayneShao/KernelSU-Tailscaled](https://github.com/WayneShao/KernelSU-Tailscaled),
+based on `ryukora/Magisk-Tailscaled`; it is not an official Tailscale or KernelSU
+product. The daemon remains the official Tailscale 1.104.2 binary; this project
+maintains the Android module integration. No device-specific kernel is included.
 
 ## Identity And Compatibility
 
 | Item | Value |
 | --- | --- |
 | Module ID | `kernelsu-tailscaled` |
-| Source | [WayneShao/KernelSU-Tailscaled](https://github.com/WayneShao/KernelSU-Tailscaled) |
+| Source | [bioluks/KernelSU-Tailscaled](https://github.com/bioluks/KernelSU-Tailscaled) |
 | Persistent data | `/data/adb/kernelsu-tailscaled` |
 | Legacy ID | `magisk-tailscaled` |
 | Legacy data | `/data/adb/tailscale`, read only by explicit migration |
 | Architectures | ARM and ARM64 |
 | Primary manager | KernelSU with WebUI support |
 
-ARM64 testing targets are the maintainer's OnePlus PKX110 and Xiaomi nezha.
-Host tests and package validation do not establish broad Android, Magisk,
-APatch, or userspace-tunnel compatibility. See the verification record
-under `docs/verification` for actual results and remaining limits.
+The combined ARM64 build has been exercised on a OnePlus 9 Pro (LE2123).
+Earlier upstream testing also targeted OnePlus PKX110 and Xiaomi nezha. Host
+tests and package validation do not establish broad Android, Magisk, APatch,
+or userspace-tunnel compatibility. See the release notes and `docs/verification`
+for actual results and remaining limits.
 
 ## Install And Activate
 
-1. Obtain a ZIP from the [current release](https://github.com/WayneShao/KernelSU-Tailscaled/releases/latest).
+1. Obtain a ZIP from the [current release](https://github.com/bioluks/KernelSU-Tailscaled/releases/latest).
    The universal ZIP includes both architectures; an ARM64-only ZIP is also built.
 2. Install the ZIP through KernelSU Manager, or `ksud module install ZIP`.
    The installer verifies the complete bundle, switches the owned runtime, and
@@ -56,6 +60,13 @@ complete manager view from that same ZIP. Reopen an already-open Details page
 to load its new assets. Normal KernelSU module promotion remains compatible with
 the selected runtime. **Apply staged runtime** is also available for a staged
 candidate; routine ZIP installation does not need that extra step.
+
+Existing `kernelsu-tailscaled` users can install this fork's ZIP over their current
+module. The ID and persistent data directory are unchanged; do not uninstall or
+delete state first. The fork ZIP switches subsequent module update checks to
+this repository. Upstream installations do not automatically discover this fork;
+the first switch is a manual ZIP install. This includes the private `2.1.1-dev.1`
+combined build (`versionCode=20000019`); release 2.1.1 advances to 20000020.
 
 ## WebUI Language And Headscale
 
@@ -250,8 +261,9 @@ those tests. Packages normalize LF, ordering, timestamps and executable modes.
 Binary payload manifests and architecture-specific installed-bundle manifests are
 verified independently. CI rebuilds all ZIPs twice and compares their bytes.
 
-Feature branches build artifacts without publishing. `v2.*-*` tags publish as
-prereleases; stable tags additionally require `STABLE_RELEASE_APPROVED=true` and
+The default `all-features-merged` branch, `main` and feature branches build
+artifacts without publishing. `v2.*-*` tags publish as prereleases; stable tags
+additionally require `STABLE_RELEASE_APPROVED=true` and
 the `source-release` environment. Enable repository release immutability before
 tag publication, then set `SOURCE_IMMUTABILITY_CONFIRMED=true` after checking the
 setting with an administrator account. `GITHUB_TOKEN` cannot read that admin-only
@@ -265,7 +277,11 @@ using the original tag and build run ID without rebuilding packages or moving
 the tag. It verifies the successful build's commit and all existing draft assets
 before publishing; already published immutable assets are verified, not replaced.
 
-The official store submission and distribution requirements are documented in
+Fork releases are distributed on this repository's GitHub Releases page. The
+upstream store submission is historical and does not approve this fork; store
+publication remains disabled unless separately reviewed and authorized.
+
+Official store requirements are documented in
 [the research record](docs/research/2026-09-07-kernelsu-store-requirements.md).
 Submission requires manual review and is not performed by the build workflow.
 After approval, configure the store repository's default-branch metadata,
@@ -280,6 +296,8 @@ default download. It never replaces existing assets or tags.
 
 - [Tailscale](https://github.com/tailscale/tailscale): official daemon and CLI.
 - [KernelSU](https://github.com/tiann/KernelSU): root manager and WebUI bridge.
+- [WayneShao/KernelSU-Tailscaled](https://github.com/WayneShao/KernelSU-Tailscaled):
+  upstream module, lifecycle implementation and retained release tooling.
 - [hev-socks5-tunnel](https://github.com/heiher/hev-socks5-tunnel): userspace helper.
 - [ryukora/Magisk-Tailscaled](https://github.com/ryukora/Magisk-Tailscaled),
   ANASFANANI, and prior contributors: original module and retained history.

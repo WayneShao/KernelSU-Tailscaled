@@ -1,3 +1,18 @@
+v2.1.1 (bioluks fork)
+
+- Publish the combined English/Chinese, Headscale, idle-CPU and Taildrop changes
+  from all-features-merged as an installable ARM/ARM64 fork release.
+- Default the WebUI to English while retaining Simplified Chinese and a saved
+  language selector. Add explicit Headscale/custom-server sign-in.
+- Reduce idle supervisor CPU and redundant Manager metadata work without
+  removing process recovery or pending-install integrity checks.
+- Initialize Taildrop's private persistent inbox in native and userspace modes;
+  retain the existing login, preferences and queued files across restarts.
+- Point module updates, source links and downloads at bioluks/KernelSU-Tailscaled.
+  Preserve upstream credits, module ID and persistent data. VersionCode 20000020
+  upgrades the private 2.1.1-dev.1 build without a new login.
+- See docs/releases/v2.1.1.md for installation, verification and limitations.
+
 v2.1.1-dev.1 (local integration; not published)
 
 - Combine feature/english-language-switch-headscale, fix/idle-battery-overhead,
