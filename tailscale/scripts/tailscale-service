@@ -70,6 +70,10 @@ web_restart() { "$KST_SHELL" "$WEB_SCRIPT" stop 9>&9 && "$KST_SHELL" "$WEB_SCRIP
 
 taildrop_save_directory() (
   local directory error source temporary line written=0 wanted
+  if migration_required || [ -f "$TS_DIR/migration-awaiting-enable" ]; then
+    echo 'Complete identity migration and enable Tailscale before choosing a Taildrop folder' >&2
+    exit 1
+  fi
   directory=$(read_taildrop_directory) || { echo 'Exactly one folder line without control characters is required' >&2; exit 2; }
   valid_taildrop_directory "$directory" || { echo 'Choose a folder below an Android shared-storage root; traversal and mount-root destinations are not allowed' >&2; exit 2; }
   if ! error=$(taildrop_enter_directory "$directory" create || { printf '%s\n' "$TAILDROP_ERROR"; exit 1; }); then

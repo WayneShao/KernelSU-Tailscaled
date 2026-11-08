@@ -66,7 +66,7 @@ module. The ID and persistent data directory are unchanged; do not uninstall or
 delete state first. The fork ZIP switches subsequent module update checks to
 this repository. Upstream installations do not automatically discover this fork;
 the first switch is a manual ZIP install. This includes the private `2.1.1-dev.1`
-combined build (`versionCode=20000019`); release 2.2.0 advances to 20000023.
+combined build (`versionCode=20000019`); release 2.2.0 advances to 20000024.
 
 ## WebUI Language And Headscale
 

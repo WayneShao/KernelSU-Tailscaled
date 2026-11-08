@@ -52,6 +52,15 @@ describe("schema 2 dashboard", () => {
     expect(root.querySelector<HTMLButtonElement>("[data-action=restart]")?.disabled).toBe(true);
   });
 
+  it.each([
+    migration,
+    { ...migration, lifecycle: "stopped", diagnostics: [{ code: "migration-awaiting-enable", severity: "info", message: "Explicit enable required" }] },
+  ])("prevents folder settings from creating config before identity migration completes", (data) => {
+    const root = document.createElement("div");
+    renderDashboard(root, parseRuntimeStatus(JSON.stringify(data)));
+    expect(root.querySelector("form[data-taildrop]")).toBeNull();
+  });
+
   it("keeps migration available when lifecycle is the only migration signal", () => {
     const root = document.createElement("div");
     renderDashboard(root, parseRuntimeStatus(JSON.stringify({ ...migration, diagnostics: [] })));

@@ -97,6 +97,21 @@ class RuntimeBehaviorTests(unittest.TestCase):
         self.assertIn('taildrop-config-invalid', diagnostics)
         self.assertEqual(0, self.run_command('stop').returncode)
 
+    def test_taildrop_save_cannot_create_config_during_identity_migration(self):
+        config = self.state / 'config/module.conf'
+        config.unlink()
+        for marker in ['migration-required', 'migration.pending', 'migration-awaiting-enable']:
+            with self.subTest(marker=marker):
+                gate = self.state / marker
+                gate.touch()
+                result = subprocess.run(['/bin/sh', str(self.service), 'taildrop-save-dir'],
+                                        input='/sdcard/Download\n', env=self.env,
+                                        capture_output=True, text=True, timeout=10)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn('Complete identity migration', result.stderr)
+                self.assertFalse(config.exists())
+                gate.unlink()
+
     def test_taildrop_rejects_unsafe_destination_without_mutating_config(self):
         original = (self.state / 'config/module.conf').read_bytes()
         for directory in ['/data/adb', '/dev/null', 'relative/folder', '/sdcard/../data',
