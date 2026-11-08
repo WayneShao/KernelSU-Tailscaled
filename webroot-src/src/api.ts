@@ -1,6 +1,7 @@
 import { exec } from "kernelsu";
 import { t } from "./i18n";
 import { controlURL } from "./server";
+import { taildropDirectory } from "./taildrop";
 
 export type ModuleAction =
   | "status-json"
@@ -17,7 +18,8 @@ export type ModuleAction =
   | "engine-prepare"
   | "engine-apply"
   | "apply-staged"
-  | "login-server";
+  | "login-server"
+  | "taildrop-save-dir";
 
 export interface CommandResult {
   stdout: string;
@@ -38,6 +40,7 @@ const ACTIONS: ReadonlySet<string> = new Set([
   "migrate-legacy",
   "apply-staged",
   "login-server",
+  "taildrop-save-dir",
   "engine-status", "engine-check", "engine-prepare", "engine-apply",
 ]);
 
@@ -52,23 +55,28 @@ function deadlineFor(action: ModuleAction, remainingMs?: number): number {
   return Math.min(remainingMs ?? maximum, maximum);
 }
 
-export function commandFor(action: ModuleAction, remainingMs?: number, server?: string): string {
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+export function commandFor(action: ModuleAction, remainingMs?: number, input?: string): string {
   const deadline = deadlineFor(action, remainingMs);
   // Leave time for the native callback after terminating a stalled shell command.
   const cushion = deadline >= 10_000 ? 5_000 : 1_000;
   const seconds = Math.max(1, Math.floor((deadline - cushion) / 1_000));
   const command = `/data/adb/ksu/bin/busybox timeout -s KILL ${seconds} sh ${SERVICE} ${action}`;
-  return action === "login-server" ? `printf '%s\\n' '${controlURL(server ?? "")}' | ${command}` : command;
+  const value = action === "login-server" ? controlURL(input ?? "") : action === "taildrop-save-dir" ? taildropDirectory(input ?? "") : undefined;
+  return value === undefined ? command : `printf '%s\\n' ${shellQuote(value)} | ${command}`;
 }
 
-export async function runAction(action: ModuleAction, remainingMs?: number, server?: string): Promise<CommandResult> {
+export async function runAction(action: ModuleAction, remainingMs?: number, input?: string): Promise<CommandResult> {
   const deadline = deadlineFor(action, remainingMs);
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const expired = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error(t(`Operation timed out (${deadline / 1_000}s). Refresh status to check the result.`, `操作超时 (${deadline / 1_000}s)，请刷新状态确认结果`))), deadline);
     });
-    const result = await Promise.race([exec(commandFor(action, remainingMs, server)), expired]);
+    const result = await Promise.race([exec(commandFor(action, remainingMs, input)), expired]);
     return {
       stdout: String(result.stdout ?? ""),
       stderr: String(result.stderr ?? ""),

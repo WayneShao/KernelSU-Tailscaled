@@ -18,6 +18,18 @@ describe("renderDashboard", () => {
     expect(root.textContent).toContain('<img src=x onerror="alert(1)">');
   });
 
+  it("renders the saved Taildrop folder as a labelled text field without interpreting markup", () => {
+    const root = document.createElement("div");
+    const directory = "/sdcard/<img src=x onerror='bad()'>/下载";
+    const status = parseRuntimeStatus(JSON.stringify({ ...running, taildrop: { directory, receiver: "stopped" } }));
+    renderDashboard(root, status);
+    expect(root.querySelector(".taildrop-settings h2")?.textContent).toBe("Taildrop");
+    expect(root.querySelector('label[for="taildrop-directory"]')?.textContent).toBe("Destination folder");
+    expect(root.querySelector<HTMLInputElement>("#taildrop-directory")?.value).toBe(directory);
+    expect(root.querySelector(".taildrop-settings .component-value")?.textContent).toBe("Stopped");
+    expect(root.querySelector("img")).toBeNull();
+  });
+
 });
 
 describe("schema 2 dashboard", () => {

@@ -1,3 +1,16 @@
+v2.2.0 (bioluks fork)
+
+- Automatically save Taildrop files to /sdcard/Download or a shared-storage
+  destination selected in the English/Chinese WebUI.
+- Use one event-driven official Tailscale receiver, not periodic retrieval.
+  Preserve existing files with numbered duplicate names and keep failed files
+  queued privately. Retain the selected folder across restarts and upgrades.
+- Supervise receiver startup, stop and recovery independently of the connection.
+- Verify on rooted Android with SELinux enforcing: default and WebUI-selected
+  Unicode/quoted folders, duplicate rename, restart persistence, receiver crash
+  recovery and queued delivery after a destination failure. Preserve login state
+  and exact network preferences. See docs/releases/v2.2.0.md.
+
 v2.1.2 (bioluks fork)
 
 - Include the combined English/Chinese, Headscale, idle-CPU and Taildrop changes

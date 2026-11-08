@@ -6,7 +6,8 @@ import migration from "./fixtures/migration-required.json";
 import stopped from "./fixtures/stopped.json";
 
 vi.mock("kernelsu", () => ({ exec: vi.fn(), toast: vi.fn() }));
-const result = (stdout: string, errno = 0) => ({ stdout, stderr: "", errno });
+interface TestCommandResult { stdout: string; stderr: string; errno: number }
+const result = (stdout: string, errno = 0): TestCommandResult => ({ stdout, stderr: "", errno });
 const button = (action: string) => document.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)!;
 const settled = async () => vi.waitFor(() => expect(document.querySelector("#app")?.getAttribute("aria-busy")).toBe("false"));
 
@@ -25,17 +26,58 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("dashboard actions", () => {
-  it("switches language without dropping a server draft or re-executing commands", async () => {
+  it("switches language without dropping form drafts or re-executing commands", async () => {
     await boot();
     document.querySelector<HTMLInputElement>("#login-server")!.value = "https://draft.example.com";
+    document.querySelector<HTMLInputElement>("#taildrop-directory")!.value = "/sdcard/草稿/It's mine";
     const calls = vi.mocked(exec).mock.calls.length;
     const select = document.querySelector<HTMLSelectElement>("[data-language]")!;
     select.value = "zh-CN";
     select.dispatchEvent(new Event("change", { bubbles: true }));
     expect(document.documentElement.lang).toBe("zh-CN");
     expect(document.querySelector<HTMLInputElement>("#login-server")!.value).toBe("https://draft.example.com");
+    expect(document.querySelector<HTMLInputElement>("#taildrop-directory")!.value).toBe("/sdcard/草稿/It's mine");
+    expect(document.querySelector('label[for="taildrop-directory"]')?.textContent).toBe("保存文件夹");
+    expect(document.querySelector("form[data-taildrop] button")?.textContent).toBe("保存文件夹");
+    expect(document.querySelector(".taildrop-settings .component-value")?.textContent).toBe("运行中");
     expect(vi.mocked(exec).mock.calls).toHaveLength(calls);
     expect(button("restart").disabled).toBe(false);
+  });
+
+  it("saves a Taildrop folder without login or service mutations and uses refreshed status", async () => {
+    await boot();
+    const directory = "/sdcard/下载/It's mine";
+    document.querySelector<HTMLInputElement>("#taildrop-directory")!.value = directory;
+    const updated = { ...running, taildrop: { directory, receiver: "running" } };
+    const save = Promise.withResolvers<TestCommandResult>();
+    vi.mocked(exec).mockClear();
+    vi.mocked(exec).mockReturnValueOnce(save.promise).mockResolvedValueOnce(result(JSON.stringify(updated)));
+    const confirm = vi.spyOn(window, "confirm");
+    document.querySelector("form[data-taildrop]")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    expect(document.querySelector<HTMLInputElement>("#taildrop-directory")!.disabled).toBe(true);
+    expect(document.querySelector<HTMLButtonElement>("form[data-taildrop] button")!.disabled).toBe(true);
+    expect(button("restart").disabled).toBe(true);
+    save.resolve(result("saved"));
+    await settled();
+    expect(document.querySelector<HTMLInputElement>("#taildrop-directory")!.value).toBe(updated.taildrop.directory);
+    expect(document.querySelector<HTMLInputElement>("#taildrop-directory")!.disabled).toBe(false);
+    expect(document.querySelector('[role="status"]')?.textContent).toContain("Taildrop folder saved");
+    expect(vi.mocked(exec).mock.calls.map(([command]) => command.split(" ").at(-1))).toEqual(["taildrop-save-dir", "status-json"]);
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("keeps the folder draft and recovers controls after a rejected destination", async () => {
+    await boot();
+    document.querySelector<HTMLInputElement>("#taildrop-directory")!.value = "/sdcard/Unavailable";
+    vi.mocked(exec).mockClear();
+    vi.mocked(exec).mockResolvedValueOnce(result("Destination is not writable; files remain in the inbox", 1));
+    document.querySelector("form[data-taildrop]")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await settled();
+    expect(document.querySelector<HTMLInputElement>("#taildrop-directory")!.value).toBe("/sdcard/Unavailable");
+    expect(document.querySelector<HTMLInputElement>("#taildrop-directory")!.disabled).toBe(false);
+    expect(document.querySelector<HTMLButtonElement>("form[data-taildrop] button")!.disabled).toBe(false);
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain("not writable");
+    expect(vi.mocked(exec)).toHaveBeenCalledOnce();
   });
 
   it("never renders an executable auth URL returned by the backend", async () => {

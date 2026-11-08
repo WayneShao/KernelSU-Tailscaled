@@ -68,7 +68,7 @@ kst_dispatch() {
       rm -f "$TS_DIR/migration-awaiting-enable"
       kst_runtime "$(kst_current)" "$1"
       ;;
-    stop|disable|status|status-json|logs|diagnostics|web-restart|login-server)
+    stop|disable|status|status-json|logs|diagnostics|web-restart|login-server|taildrop-save-dir)
       selected=$(kst_current) || return 1
       [ -n "$selected" ] || selected=$BUNDLE_DIR
       kst_runtime "$selected" "$1"

@@ -87,6 +87,29 @@ class RuntimeBehaviorTests(unittest.TestCase):
     def common(self, body):
         return subprocess.run(['/bin/sh', '-c', '. "$BUNDLE_DIR/tailscale/scripts/common.sh"; ' + body], env=self.env, capture_output=True, text=True, timeout=10)
 
+    def test_unsafe_taildrop_config_does_not_stop_network_runtime(self):
+        self.set_config(self.config + 'TAILDROP_DIR=/data/adb\n')
+        self.start()
+        status = self.status()
+        self.assertEqual('running', status['components']['daemon'])
+        self.assertEqual('stopped', status['taildrop']['receiver'])
+        diagnostics = {item['code'] for item in status['diagnostics']}
+        self.assertIn('taildrop-config-invalid', diagnostics)
+        self.assertEqual(0, self.run_command('stop').returncode)
+
+    def test_taildrop_rejects_unsafe_destination_without_mutating_config(self):
+        original = (self.state / 'config/module.conf').read_bytes()
+        for directory in ['/data/adb', '/dev/null', 'relative/folder', '/sdcard/../data',
+                          '/storage/emulated/0/../../data', '/sdcard/Download\n/data/adb',
+                          '/sdcard/Down\rload', '/sdcard/Down\tload']:
+            with self.subTest(directory=directory):
+                result = subprocess.run(['/bin/sh', str(self.service), 'taildrop-save-dir'],
+                                        input=directory + '\n', env=self.env,
+                                        capture_output=True, text=True, timeout=10)
+                self.assertNotEqual(0, result.returncode)
+                self.assertEqual(original, (self.state / 'config/module.conf').read_bytes())
+                self.assertFalse((self.root / 'starts').exists())
+
     def test_login_server_preserves_preferences_and_scopes_auth_url(self):
         self.start()
         before = json.loads((self.root / 'prefs.json').read_text())

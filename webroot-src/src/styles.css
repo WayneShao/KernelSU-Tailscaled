@@ -62,10 +62,10 @@ pre { max-height: 62vh; margin: 20px 0 0; overflow: auto; border: 1px solid #d5d
 .language-selector { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; }
 select, input { min-width: 0; min-height: 44px; border: 1px solid #bfc5ca; border-radius: 6px; padding: 9px 12px; color: inherit; background: #fff; font: inherit; }
 select:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid #3678ae; outline-offset: 3px; }
-.server-settings form { display: grid; gap: 10px; }
-.server-settings label { font-size: 13px; color: #637074; }
-.server-settings input { width: 100%; font-size: 14px; }
-.server-settings .message { margin: 0; font-size: 13px; }
+.server-settings form, .taildrop-settings form { display: grid; gap: 10px; }
+.server-settings label, .taildrop-settings label { font-size: 13px; color: #637074; }
+.server-settings input, .taildrop-settings input { width: 100%; font-size: 14px; }
+.server-settings .message, .taildrop-settings .message { margin: 0; font-size: 13px; }
 .sign-in-link { display: inline-flex; align-items: center; min-height: 44px; margin-top: 12px; color: #236da6; }
 
 @media (min-width: 560px) {
@@ -87,6 +87,6 @@ select:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   .component-row[data-state="stopped"] .component-value, .backend-state[data-lifecycle="failed"], .notice[role="alert"] { color: #ef9494; }
   .notice { color: #a5c9e8; }
   select, input { background: #26292c; border-color: #4e555b; }
-  .server-settings label { color: #a6adb3; }
+  .server-settings label, .taildrop-settings label { color: #a6adb3; }
   .sign-in-link { color: #a5c9e8; }
 }

@@ -2,6 +2,7 @@ import type { ComponentState, Lifecycle, RuntimeStatus } from "./model";
 import type { EngineStatus } from './engine';
 import { appendLanguageSelector, t } from "./i18n";
 import { renderServerSettings } from "./server";
+import { renderTaildropSettings } from "./taildrop";
 
 function lifecycleLabel(lifecycle: Lifecycle): string {
   const labels: Record<Lifecycle, string> = {
@@ -106,6 +107,7 @@ export function renderDashboard(root: HTMLElement, status: RuntimeStatus): void 
   addButton(actions, "restart", t("Restart service", "重启服务"), t("Restart Tailscale module service", "重启 Tailscale 模块服务")).disabled = !status.enabled || migrationRequired || awaitingEnable;
   root.append(actions);
   renderServerSettings(root, status);
+  renderTaildropSettings(root, status.taildrop);
 
   const updateControls = document.createElement("section");
   appendText(updateControls, "h2", t("Updates", "更新控制"));

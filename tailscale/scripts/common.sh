@@ -22,10 +22,12 @@ SUPERVISOR_SCRIPT="$SCRIPT_DIR/tailscale-supervisor"
 DAEMON_SCRIPT="$SCRIPT_DIR/tailscale-daemon"
 WEB_SCRIPT="$SCRIPT_DIR/tailscale-web"
 TUNNEL_SCRIPT="$SCRIPT_DIR/tailscale-tunnel"
+TAILDROP_SCRIPT="$SCRIPT_DIR/tailscale-taildrop"
 SUPERVISOR_PID="$RUN_DIR/supervisor.pid"
 DAEMON_PID="$RUN_DIR/tailscaled.pid"
 WEB_PID="$RUN_DIR/web.pid"
 TUNNEL_PID="$RUN_DIR/tunnel.pid"
+TAILDROP_PID="$RUN_DIR/taildrop.pid"
 KST_SHELL=${KST_SHELL:-/system/bin/sh}
 KST_BUSYBOX=${KST_BUSYBOX:-/data/adb/ksu/bin/busybox}
 KST_LOCK_TIMEOUT=${KST_LOCK_TIMEOUT:-15}
@@ -52,6 +54,8 @@ CONTROL_PROXY=
 DEVICE_HOSTNAME=
 SUPERVISOR_INTERVAL=5
 RESTART_BACKOFF_MAX=60
+TAILDROP_DIR=/sdcard/Download
+. "$SCRIPT_DIR/taildrop-lib.sh"
 
 ensure_dirs() {
   mkdir -p "$TS_DIR" "$RUN_DIR" "$LOG_DIR" "$CONFIG_DIR" || return 1
@@ -120,6 +124,8 @@ valid_loopback() {
 load_config() {
   local config="$CONFIG_DIR/module.conf" line key value
   CONFIG_ERROR=
+  TAILDROP_DIR=/sdcard/Download
+  TAILDROP_CONFIG_ERROR=
   [ -f "$config" ] || config="$BUNDLE_DIR/tailscale/config/module.conf"
   [ -f "$config" ] || { CONFIG_ERROR='Configuration file is missing'; return 1; }
   while IFS= read -r line || [ -n "$line" ]; do
@@ -142,6 +148,9 @@ load_config() {
         [ "${#value}" -le 63 ] || { CONFIG_ERROR='DEVICE_HOSTNAME exceeds DNS label limit'; return 1; }; DEVICE_HOSTNAME=$value ;;
       SUPERVISOR_INTERVAL) valid_number "$value" 1 300 || { CONFIG_ERROR='Invalid SUPERVISOR_INTERVAL'; return 1; }; SUPERVISOR_INTERVAL=$value ;;
       RESTART_BACKOFF_MAX) valid_number "$value" 1 300 || { CONFIG_ERROR='Invalid RESTART_BACKOFF_MAX'; return 1; }; RESTART_BACKOFF_MAX=$value ;;
+      TAILDROP_DIR)
+        if valid_taildrop_directory "$value"; then TAILDROP_DIR=$value
+        else TAILDROP_CONFIG_ERROR='Invalid TAILDROP_DIR; choose a folder below an Android shared-storage root'; fi ;;
       *) CONFIG_ERROR='Unknown configuration key'; return 1 ;;
     esac
   done < "$config"

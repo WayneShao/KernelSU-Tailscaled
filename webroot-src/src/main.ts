@@ -21,6 +21,7 @@ import { renderDashboard, renderLogs, renderMessage, renderEngineUpdate } from "
 import { parseEngineStatus } from './engine';
 import { setLanguage, t } from "./i18n";
 import { controlURL, parseLoginResult, renderLoginResult } from "./server";
+import { taildropDirectory } from "./taildrop";
 import "./styles.css";
 
 const applicationRoot = document.querySelector<HTMLElement>("#app");
@@ -66,8 +67,8 @@ function announce(message: string, isError = false): void {
   root.querySelector("header")?.after(notice);
 }
 
-async function execute(action: ModuleAction, remainingMs?: number, server?: string): Promise<string> {
-  const result = await runAction(action, remainingMs, server);
+async function execute(action: ModuleAction, remainingMs?: number, input?: string): Promise<string> {
+  const result = await runAction(action, remainingMs, input);
   if (result.exitCode !== 0) {
     throw new Error(result.stderr.trim() || result.stdout.trim() || t(`Command failed (${result.exitCode})`, `命令失败 (${result.exitCode})`));
   }
@@ -193,30 +194,39 @@ root.addEventListener("change", (event) => {
   const select = event.target as HTMLSelectElement;
   if (!select.matches("select[data-language]") || busy) return;
   if (select.value !== "en" && select.value !== "zh-CN") return;
-  const draft = root.querySelector<HTMLInputElement>("#login-server")?.value;
+  const drafts = ["login-server", "taildrop-directory"].map((id) => ({ id, value: root.querySelector<HTMLInputElement>(`#${id}`)?.value }));
   setLanguage(select.value);
   redraw();
-  const input = root.querySelector<HTMLInputElement>("#login-server");
-  if (input && draft !== undefined) input.value = draft;
+  for (const draft of drafts) {
+    const input = root.querySelector<HTMLInputElement>(`#${draft.id}`);
+    if (input && draft.value !== undefined) input.value = draft.value;
+  }
   drawIcons();
 });
 
 root.addEventListener("submit", async (event) => {
   const form = event.target as HTMLFormElement;
-  if (!form.matches("form[data-server]")) return;
+  if (!form.matches("form[data-server], form[data-taildrop]")) return;
   event.preventDefault();
   if (busy) return;
   try {
-    const server = controlURL(root.querySelector<HTMLInputElement>("#login-server")!.value);
-    if (!window.confirm(t(`Connect to ${server}? This can disconnect your current network. Complete registration on the selected server afterward.`, `连接到 ${server}？这可能断开当前网络。随后请在所选服务器完成注册。`))) return;
+    const isTaildrop = form.hasAttribute("data-taildrop");
+    const input = form.querySelector<HTMLInputElement>("input")!.value;
+    const value = isTaildrop ? taildropDirectory(input) : controlURL(input);
+    if (!isTaildrop && !window.confirm(t(`Connect to ${value}? This can disconnect your current network. Complete registration on the selected server afterward.`, `连接到 ${value}？这可能断开当前网络。随后请在所选服务器完成注册。`))) return;
     setBusy(true);
-    announce(t("Connecting to control server…", "正在连接控制服务器…"));
-    const result = parseLoginResult(await execute("login-server", undefined, server));
+    announce(isTaildrop ? t("Saving Taildrop folder…", "正在保存 Taildrop 文件夹…") : t("Connecting to control server…", "正在连接控制服务器…"));
+    const response = await execute(isTaildrop ? "taildrop-save-dir" : "login-server", undefined, value);
+    const result = isTaildrop ? null : parseLoginResult(response);
     await refreshStatus();
-    const dashboard = redraw;
-    redraw = () => { dashboard(); renderLoginResult(root, result); };
-    redraw();
-    drawIcons();
+    if (result) {
+      const dashboard = redraw;
+      redraw = () => { dashboard(); renderLoginResult(root, result); };
+      redraw();
+      drawIcons();
+    } else {
+      announce(t("Taildrop folder saved.", "Taildrop 文件夹已保存。"));
+    }
   } catch (error) {
     announce(errorMessage(error), true);
   } finally {

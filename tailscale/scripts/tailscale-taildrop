@@ -1,0 +1,43 @@
+#!/system/bin/sh
+# shellcheck disable=SC3043
+SCRIPT_DIR=${0%/*}
+. "$SCRIPT_DIR/common.sh"
+
+taildrop_stop() {
+  stop_owned "$TAILDROP_PID" "$TAILSCALE_BIN" --conflict=rename || return 1
+  stop_logger taildrop
+}
+
+taildrop_start() (
+  load_config || exit 1
+  module_disabled && exit 1
+  if [ -n "$TAILDROP_CONFIG_ERROR" ]; then
+    taildrop_stop || exit 1
+    log WARN "$TAILDROP_CONFIG_ERROR; queued Taildrop files remain in the private inbox"
+    exit 1
+  fi
+  taildrop_health && exit 0
+  taildrop_stop || exit 1
+  daemon_running || exit 1
+  # chdir pins the validated directory inode. Passing '.' to the official CLI
+  # prevents later symlink changes or unmounts from redirecting root writes.
+  if ! taildrop_enter_directory "$TAILDROP_DIR" create; then
+    log WARN "Taildrop receiver unavailable: $TAILDROP_ERROR; unlock storage or save another folder; queued files remain in the private inbox"
+    exit 1
+  fi
+  launch_logged taildrop "$TAILDROP_PID" "$TAILSCALE_BIN" --conflict=rename \
+    "$TAILSCALE_BIN" --socket="$SOCKET_FILE" file get --loop --conflict=rename . || exit 1
+  if ! taildrop_health; then
+    taildrop_stop || exit 1
+    log WARN 'Taildrop receiver did not remain running; inspect taildrop.log; queued files remain in the private inbox'
+    exit 1
+  fi
+  log INFO "Taildrop receiver started for $TAILDROP_DIR"
+)
+
+case "$1" in
+  start) with_control_lock taildrop_start ;;
+  stop) with_control_lock taildrop_stop ;;
+  health) load_config && taildrop_health ;;
+  *) echo 'usage: tailscale-taildrop {start|stop|health}' >&2; exit 2 ;;
+esac

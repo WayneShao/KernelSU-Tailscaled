@@ -6,6 +6,7 @@
   "moduleVersion": "2.0.0-beta.1",
   "tailscaleVersion": "1.102.3",
   "runtime": {"activeVersion":"2.0.0-beta.1","stagedVersion":null,"previousVersion":null},
+  "taildrop": {"directory":"/sdcard/Download","receiver":"running"},
   "diagnostics": [],
   "components": {
     "supervisor": "running",

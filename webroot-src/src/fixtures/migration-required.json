@@ -7,6 +7,7 @@
   "tailscaleVersion": "1.102.3",
   "components": {"supervisor":"stopped","daemon":"stopped","dataPlane":"stopped","web":"stopped"},
   "runtime": {"activeVersion":null,"stagedVersion":null,"previousVersion":null},
+  "taildrop": {"directory":"/sdcard/Download","receiver":"stopped"},
   "diagnostics": [{"code":"migration-required","severity":"warning","message":"Legacy identity requires explicit migration"}],
   "tailscale": null,
   "prefs": null

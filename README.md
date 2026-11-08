@@ -10,10 +10,10 @@ Run the official Tailscale daemon on rooted Android without occupying Android's
 VPN slot. KernelSU-first module with a local WebUI, serialized lifecycle control,
 diagnostic health checks, explicit legacy migration, and verified runtime updates.
 
-This is **bioluks's fork**, maintained on **all-features-merged**. Version **2.1.2**
-combines the English-default WebUI, Chinese language switch, Headscale sign-in,
-idle supervisor CPU improvements and Taildrop receiving fixes. See the
-[2.1.2 release notes](docs/releases/v2.1.2.md).
+This is **bioluks's fork**, maintained on **all-features-merged**. Version **2.2.0**
+adds automatic Taildrop delivery to a WebUI-selected folder, alongside the
+English-default WebUI, Chinese language switch, Headscale sign-in and idle
+supervisor CPU improvements. See the [2.2.0 release notes](docs/releases/v2.2.0.md).
 
 Download the [latest published stable release](https://github.com/bioluks/KernelSU-Tailscaled/releases/latest).
 The legacy Magisk-Tailscaled v1 release and update channel are retired. Only the
@@ -66,7 +66,7 @@ module. The ID and persistent data directory are unchanged; do not uninstall or
 delete state first. The fork ZIP switches subsequent module update checks to
 this repository. Upstream installations do not automatically discover this fork;
 the first switch is a manual ZIP install. This includes the private `2.1.1-dev.1`
-combined build (`versionCode=20000019`); release 2.1.2 advances to 20000021.
+combined build (`versionCode=20000019`); release 2.2.0 advances to 20000023.
 
 ## WebUI Language And Headscale
 
@@ -119,22 +119,28 @@ and boot; a newer bundled engine takes precedence. See the
 ## Taildrop On Android
 
 Taildrop works in native mode; switching to userspace networking is not required.
-The module sets `--statedir=/data/adb/kernelsu-tailscaled` so the Linux daemon can
-queue incoming files under `/data/adb/kernelsu-tailscaled/files/`, separately from
-the existing login state. Queued files survive service restarts and module updates.
-Unlike the Android app, this module does not automatically save them to Downloads.
+Received files are saved automatically to **`/sdcard/Download`** while the module
+is running. In the WebUI, under **Taildrop**, set **Destination folder** and
+choose **Save folder** to use another shared-storage folder. The module creates
+the folder if needed and remembers it across service restarts and module updates.
+Changing folders restarts only the receiver, not Tailscale or your connection.
 
-Retrieve queued files from a root shell:
+One supervised `tailscale file get --loop --conflict=rename` process waits for
+file-arrival notifications; no periodic retrieval command or inbox scan is added.
+Existing files are never overwritten: duplicate names receive numbered suffixes.
+If storage is unavailable, locked or full, files remain in the private inbox
+under `/data/adb/kernelsu-tailscaled/files/` until they can be retrieved. The
+WebUI shows receiver availability; **Logs** includes the receiver's output.
 
-```sh
-TS=/data/adb/kernelsu-tailscaled
-"$TS/current/bin/tailscale" --socket="$TS/run/tailscaled.sock" \
-  file get /sdcard/Download
-```
+Choose a folder under `/sdcard/` or Android's `/storage/` shared storage, not a
+private system directory. If delivery fails, select a writable folder and inspect
+**Logs** before retrying. Do not run a second receiving CLI against the same
+inbox while automatic delivery is active.
 
 To send from the phone, use the module's CLI and socket:
 
 ```sh
+TS=/data/adb/kernelsu-tailscaled
 "$TS/current/bin/tailscale" --socket="$TS/run/tailscaled.sock" \
   file cp /sdcard/Download/example.txt <peer-name-or-tailnet-ip>:
 ```
@@ -190,6 +196,7 @@ CONTROL_PROXY=
 DEVICE_HOSTNAME=
 SUPERVISOR_INTERVAL=5
 RESTART_BACKOFF_MAX=60
+TAILDROP_DIR=/sdcard/Download
 ```
 
 Native mode is explicit. Userspace mode requires the bundled helper and is never

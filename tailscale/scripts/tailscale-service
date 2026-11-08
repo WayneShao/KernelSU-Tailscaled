@@ -8,6 +8,7 @@ runtime_stop() {
   printf '0\n' > "$RUN_DIR/wanted"
   # The supervisor's TERM trap exits without acquiring this controller lock.
   stop_owned "$SUPERVISOR_PID" "$SUPERVISOR_SCRIPT" || failed=1
+  "$KST_SHELL" "$TAILDROP_SCRIPT" stop 9>&9 || failed=1
   "$KST_SHELL" "$WEB_SCRIPT" stop 9>&9 || failed=1
   "$KST_SHELL" "$TUNNEL_SCRIPT" stop 9>&9 || failed=1
   "$KST_SHELL" "$DAEMON_SCRIPT" stop 9>&9 || failed=1
@@ -47,6 +48,7 @@ runtime_start() {
   fi
   "$KST_SHELL" "$TUNNEL_SCRIPT" start 9>&9 || log WARN 'Data-plane helper startup failed'
   "$KST_SHELL" "$WEB_SCRIPT" start 9>&9 || log WARN 'Official web panel startup failed'
+  "$KST_SHELL" "$TAILDROP_SCRIPT" start 9>&9 || log WARN 'Taildrop receiver startup unavailable; inspect logs and unlock shared storage or save another folder'
   if ! supervisor_health; then
     (exec 9>&- 8>&-; unset KST_LOCK_HELD; trap '' HUP; exec "$KST_SHELL" "$SUPERVISOR_SCRIPT") </dev/null >/dev/null 2>&1 &
     local pid=$!
@@ -66,6 +68,47 @@ runtime_toggle() { if module_disabled; then runtime_enable; else runtime_disable
 runtime_restart() { runtime_stop >/dev/null && runtime_start; }
 web_restart() { "$KST_SHELL" "$WEB_SCRIPT" stop 9>&9 && "$KST_SHELL" "$WEB_SCRIPT" start 9>&9; }
 
+taildrop_save_directory() (
+  local directory error source temporary line written=0 wanted
+  directory=$(read_taildrop_directory) || { echo 'Exactly one folder line without control characters is required' >&2; exit 2; }
+  valid_taildrop_directory "$directory" || { echo 'Choose a folder below an Android shared-storage root; traversal and mount-root destinations are not allowed' >&2; exit 2; }
+  if ! error=$(taildrop_enter_directory "$directory" create || { printf '%s\n' "$TAILDROP_ERROR"; exit 1; }); then
+    printf '%s\n' "$error" >&2
+    exit 1
+  fi
+  source="$CONFIG_DIR/module.conf"
+  [ ! -L "$source" ] || { echo 'Refusing symbolic-link configuration file' >&2; exit 1; }
+  [ -f "$source" ] || source="$BUNDLE_DIR/tailscale/config/module.conf"
+  [ -f "$source" ] || { echo 'Configuration file is missing' >&2; exit 1; }
+  temporary=$(mktemp "$CONFIG_DIR/.module.conf.XXXXXX") || exit 1
+  trap 'rm -f "$temporary"' EXIT HUP INT TERM
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      TAILDROP_DIR=*)
+        if [ "$written" = 0 ]; then printf 'TAILDROP_DIR=%s\n' "$directory"; written=1; fi ;;
+      *) printf '%s\n' "$line" ;;
+    esac
+  done < "$source" > "$temporary" || exit 1
+  if [ "$written" = 0 ]; then printf 'TAILDROP_DIR=%s\n' "$directory" >> "$temporary" || exit 1; fi
+  chmod 0600 "$temporary" && mv -f "$temporary" "$CONFIG_DIR/module.conf" || exit 1
+  trap - EXIT HUP INT TERM
+  # Saving a folder never touches the daemon, identity or network preferences.
+  if ! "$KST_SHELL" "$TAILDROP_SCRIPT" stop 9>&9; then
+    log WARN 'Taildrop folder saved, but owned receiver stop failed; inspect logs before recovery'
+    echo 'Folder saved; receiver could not stop safely. Inspect Logs.'
+    exit 0
+  fi
+  IFS= read -r wanted < "$RUN_DIR/wanted" 2>/dev/null || wanted=
+  if [ "$wanted" = 1 ] && ! module_disabled && daemon_running; then
+    if ! "$KST_SHELL" "$TAILDROP_SCRIPT" start 9>&9; then
+      log WARN 'Taildrop folder saved, but receiver startup is unavailable; recovery will retry'
+      echo 'Folder saved; receiver is unavailable. Inspect Logs and shared-storage access.'
+      exit 0
+    fi
+  fi
+  printf 'Taildrop folder saved: %s\n' "$directory"
+)
+
 version_of() { sed -n 's/^version=//p' "$1/module.prop" 2>/dev/null | head -n 1; }
 version_json() {
   local version
@@ -74,7 +117,7 @@ version_json() {
 }
 
 status_json() {
-  local enabled=true supervisor=stopped daemon=stopped web=stopped lifecycle=stopped config_ok=1
+  local enabled=true supervisor=stopped daemon=stopped web=stopped lifecycle=stopped config_ok=1 receiver=stopped
   local tailscale_status=null tailscale_prefs=null module_version engine_version backend warning health saved
   DIAGNOSTICS=
   DATA_PLANE=stopped
@@ -85,6 +128,11 @@ status_json() {
   if web_running; then
     if [ "$config_ok" = 1 ] && tcp_ready "$WEB_LISTEN"; then web=running; else web=unknown; fi
   fi
+  if taildrop_running; then
+    if taildrop_health; then receiver=running; else receiver=unknown; fi
+  elif [ -f "$TAILDROP_PID" ] && ! record_process_gone "$TAILDROP_PID"; then receiver=unknown
+  fi
+  if [ -n "$TAILDROP_CONFIG_ERROR" ]; then diagnostic taildrop-config-invalid warning "$TAILDROP_CONFIG_ERROR"; fi
   if [ "$daemon" = running ]; then
     if ! tailscale_status=$(cli_json status status --json); then
       tailscale_status=null
@@ -122,6 +170,9 @@ status_json() {
     if [ "$supervisor" != running ] || [ "$web" != running ] || [ "$DATA_PLANE" != running ] || [ -n "$health" ]; then lifecycle=degraded; fi
     [ "$web" = running ] || diagnostic web-unavailable warning 'Official loopback web panel is not ready'
     [ "$supervisor" = running ] || diagnostic supervisor-unavailable warning 'Runtime supervision is not running'
+    if [ "$receiver" != running ]; then
+      diagnostic taildrop-unavailable warning 'Taildrop receiver is unavailable; unlock or mount shared storage, check the saved folder, and inspect Logs; queued files remain in the private inbox'
+    fi
   elif [ "$saved" = starting ]; then lifecycle=starting
   elif [ "$saved" = failed ] || [ "$(sed -n '1p' "$RUN_DIR/wanted" 2>/dev/null)" = 1 ]; then
     lifecycle=failed; diagnostic daemon-stopped error 'Runtime is requested but the owned daemon is stopped'
@@ -137,6 +188,7 @@ status_json() {
   printf '"webListen":"%s",' "$(json_escape "$WEB_LISTEN")"
   printf '"moduleVersion":"%s","tailscaleVersion":"%s",' "$(json_escape "$module_version")" "$(json_escape "$engine_version")"
   printf '"components":{"supervisor":"%s","daemon":"%s","dataPlane":"%s","web":"%s"},' "$supervisor" "$daemon" "$DATA_PLANE" "$web"
+  printf '"taildrop":{"directory":"%s","receiver":"%s"},' "$(json_escape "$TAILDROP_DIR")" "$receiver"
   printf '"runtime":{"activeVersion":'; version_json "$BUNDLE_DIR"
   printf ',"stagedVersion":'; version_json "$KST_STAGED_DIR"
   printf ',"previousVersion":'; version_json "$TS_DIR/previous"
@@ -145,7 +197,7 @@ status_json() {
 
 runtime_logs() {
   local file
-  for file in "$LOG_DIR/supervisor.log" "$LOG_DIR/tailscaled.log" "$LOG_DIR/web.log" "$LOG_DIR/tunnel.log"; do
+  for file in "$LOG_DIR/supervisor.log" "$LOG_DIR/tailscaled.log" "$LOG_DIR/web.log" "$LOG_DIR/tunnel.log" "$LOG_DIR/taildrop.log"; do
     [ -f "$file" ] || continue
     printf '=== %s ===\n' "${file##*/}"
     tail -c 32768 "$file" | tail -n 100 | redact
@@ -193,5 +245,6 @@ case "$1" in
   diagnostics) status_json; runtime_logs ;;
   web-restart) with_control_lock web_restart ;;
   login-server) with_control_lock login_server ;;
-  *) echo 'usage: tailscale-service {enable|disable|toggle|start|stop|restart|status|status-json|logs|web-restart|diagnostics|login-server}' >&2; exit 2 ;;
+  taildrop-save-dir) with_control_lock taildrop_save_directory ;;
+  *) echo 'usage: tailscale-service {enable|disable|toggle|start|stop|restart|status|status-json|logs|web-restart|diagnostics|login-server|taildrop-save-dir}' >&2; exit 2 ;;
 esac

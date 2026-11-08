@@ -32,6 +32,7 @@ export interface RuntimeStatus {
   tailscaleVersion: string;
   components: RuntimeComponents;
   runtime: { activeVersion: string | null; stagedVersion: string | null; previousVersion: string | null };
+  taildrop: { directory: string; receiver: ComponentState };
   diagnostics: Diagnostic[];
   health: string[];
 }
@@ -71,7 +72,7 @@ function stringList(value: unknown): string[] {
 export function parseRuntimeStatus(input: string): RuntimeStatus {
   try {
     const raw: unknown = JSON.parse(input);
-    if (!isObject(raw) || raw.schemaVersion !== 2 || typeof raw.enabled !== "boolean" || !isObject(raw.components) || !isObject(raw.runtime)) {
+    if (!isObject(raw) || raw.schemaVersion !== 2 || typeof raw.enabled !== "boolean" || !isObject(raw.components) || !isObject(raw.runtime) || !isObject(raw.taildrop)) {
       throw new Error("Invalid runtime status");
     }
 
@@ -164,6 +165,7 @@ export function parseRuntimeStatus(input: string): RuntimeStatus {
       tailscaleVersion: requireString(raw, "tailscaleVersion"),
       components,
       runtime,
+      taildrop: { directory: requireString(raw.taildrop, "directory"), receiver: requireComponent(raw.taildrop.receiver) },
       diagnostics,
       health,
     };

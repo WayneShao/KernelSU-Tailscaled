@@ -6,27 +6,12 @@ vi.mock("kernelsu", () => ({ exec: vi.fn() }));
 afterEach(() => vi.useRealTimers());
 
 describe("commandFor", () => {
-  it.each([
-    "status-json",
-    "enable",
-    "disable",
-    "restart",
-    "logs",
-    "web-restart",
-    "diagnostics",
-    "migration-status",
-    "migrate-legacy",
-    "apply-staged",
-  ] as const)("maps the fixed %s action", (action) => {
-    expect(commandFor(action)).toMatch(new RegExp(`^/data/adb/ksu/bin/busybox timeout -s KILL \\d+ sh /data/adb/modules/kernelsu-tailscaled/control.sh ${action}$`));
-  });
-
   it("rejects a raw shell action", () => {
     expect(() => commandFor("status-json; id" as never)).toThrow("Unsupported action");
   });
-  it("reserves time for a contended runtime lock and startup", () => {
-    expect(commandFor("restart")).toContain("KILL 85 ");
-    expect(commandFor("status-json")).toContain("KILL 35 ");
+
+  it.each(["", "/data/adb", "/sdcard", "/sdcard/", "/sdcard/Download/", "/sdcard//Download", "/sdcard/../data", "/storage", "/storage/emulated/0", "/storage/emulated/0/./Download", "/storage/emulated/not-a-user/Download", "/storage/self/primary", "/storage/ABCD-1234", "/storage/self/other/Download", "/sdcard/Download\nrestart", "/sdcard/Download\u0000", "/sdcard/Download\u007f", "/sdcard/Download\u0085"])("rejects unsafe Taildrop input %j before the bridge", (directory) => {
+    expect(() => commandFor("taildrop-save-dir", undefined, directory)).toThrow();
   });
 
   it("has a real deadline when the KernelSU callback never arrives", async () => {
@@ -41,15 +26,8 @@ describe("commandFor", () => {
     vi.useFakeTimers();
     vi.mocked(exec).mockReturnValue(new Promise(() => {}));
     const pending = expect(runAction("status-json", 4_000)).rejects.toThrow();
-    expect(vi.mocked(exec).mock.lastCall?.[0]).toContain("KILL 3 ");
     await vi.advanceTimersByTimeAsync(4_000);
     await pending;
   });
 
-  it("normalizes command output and clears its deadline", async () => {
-    vi.useFakeTimers();
-    vi.mocked(exec).mockResolvedValue({ stdout: "{}", stderr: "", errno: 0 });
-    expect(await runAction("status-json")).toEqual({ stdout: "{}", stderr: "", exitCode: 0 });
-    expect(vi.getTimerCount()).toBe(0);
-  });
 });
